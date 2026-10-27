@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>excali</title>
+    <link rel="stylesheet" href="/app.css" />
+    <style>
+      html, body, #root { margin: 0; height: 100%; }
+      .layout { display: flex; height: 100%; }
+      main { flex: 1; position: relative; }
+      .file-list {
+        width: 220px; padding: 12px 8px; overflow-y: auto; box-sizing: border-box;
+        border-right: 1px solid #e9ecef; background: #f8f9fa;
+        font: 14px -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", sans-serif;
+      }
+      .file-list button {
+        display: block; width: 100%; padding: 8px 10px; margin-bottom: 2px; text-align: left;
+        border: 0; border-radius: 6px; background: transparent; color: #343a40; cursor: pointer;
+        overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: inherit;
+      }
+      .file-list button:hover { background: #e9ecef; }
+      .file-list button.active { background: #d0ebff; color: #1864ab; font-weight: 600; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

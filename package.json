@@ -1,0 +1,29 @@
+{
+  "name": "excalidraw-for-agent",
+  "version": "0.1.0",
+  "description": "AI 에이전트가 Excalidraw로 다이어그램을 그리고, 사람은 로컬 뷰어로 확인하는 도구",
+  "type": "module",
+  "license": "MIT",
+  "bin": {
+    "excali": "bin/excali.mjs"
+  },
+  "exports": {
+    "./scene": "./lib/scene.mjs"
+  },
+  "scripts": {
+    "build": "esbuild src/app.jsx --bundle --format=esm --jsx=automatic --minify --conditions=production --external:*.woff2 --define:process.env.NODE_ENV=\\\"production\\\" --outdir=dist",
+    "example": "node examples/kafka-rebalance.mjs && node examples/order-flow.mjs"
+  },
+  "dependencies": {
+    "@excalidraw/excalidraw": "0.18.0",
+    "playwright-core": "^1.64.1",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

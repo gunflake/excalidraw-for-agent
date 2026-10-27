@@ -1,0 +1,124 @@
+# excalidraw-for-agent
+
+AI 에이전트(Claude Code, Codex 등)가 **Excalidraw로 다이어그램을 그리고**, 사람은 **확인만** 하는 도구입니다.
+
+- 에이전트: 짧은 JS 스크립트로 도형과 화살표를 놓고 `.excalidraw` 파일과 PNG를 만듭니다. PNG를 직접 보고 겹침이나 어색한 배치를 스스로 고칩니다.
+- 사람: 대화창에서 PNG를 보거나, 로컬 뷰어로 열린 그림을 확인합니다. 그림을 그리거나 excalidraw.com에 들어갈 필요가 없습니다.
+
+Mermaid보다 보기 좋고, 손으로 그린 느낌의 그림을 에이전트에게 맡기는 것이 목적입니다.
+
+![주문 결제 흐름 예시](docs/order-flow.png)
+
+## 구성
+
+| 구성 요소 | 하는 일 |
+|---|---|
+| `lib/scene.mjs` (Scene API) | 상자, 화살표, 묶음, 시퀀스 다이어그램을 좌표로 만들고 `.excalidraw`로 저장합니다. 라벨이 화살표보다 길거나 도형이 겹치면 경고합니다. |
+| `excali` 명령 | 그림 스크립트 만들기·빌드, PNG 출력, 로컬 뷰어 실행을 맡습니다. |
+| 로컬 뷰어 | 보기 전용 Excalidraw 화면입니다. 파일이 바뀌면 바로 다시 그리고, 새 그림이 생기면 그 그림으로 넘어갑니다. |
+| `skill/excalidraw-diagram` | 에이전트가 언제, 어떻게 그릴지 정한 스킬입니다. |
+
+한글은 나눔손글씨 펜으로 보입니다. Excalidraw 기본 손글씨 폰트(Excalifont)에 한글 글리프가 없어서, 한글 범위만 나눔손글씨로 바꿔 끼웁니다.
+
+## 설치
+
+설치 프로그램이 아니라 **내려받아 실행하는 방식**입니다. Node.js 20 이상만 있으면 됩니다.
+
+```bash
+git clone https://github.com/gunflake/excalidraw-for-agent.git ~/Projects/excalidraw-for-agent
+```
+
+```bash
+~/Projects/excalidraw-for-agent/install.sh
+```
+
+`install.sh`가 하는 일:
+
+1. `npm install`과 뷰어 빌드
+2. `~/.local/bin/excali` 에 명령 연결 (`EXCALI_BIN_DIR`로 바꿀 수 있습니다)
+3. `~/.claude/skills`, `~/.codex/skills` 중 있는 곳에 `excalidraw-diagram` 스킬 연결
+
+PNG 출력에는 Chromium이 필요합니다. Google Chrome이 깔려 있으면 그대로 씁니다. 없으면 `npx playwright install chromium`을 실행하세요.
+
+지우려면 위의 두 링크와 저장소 폴더를 삭제하면 됩니다.
+
+## 사용법
+
+### 에이전트에게 맡기기
+
+설치 후 에이전트에게 이렇게 말하면 됩니다.
+
+> 이 결제 흐름 그림으로 설명해줘
+>
+> Kafka 리밸런싱을 시퀀스 다이어그램으로 그려줘
+
+에이전트는 스킬에 따라 아래 순서로 일합니다.
+
+1. `excali new <이름>` 으로 `~/diagrams/src/<이름>.mjs` 틀 만들기
+2. Scene API로 스크립트 작성
+3. `excali build <이름>` 으로 `~/diagrams/<이름>.excalidraw`, `.png` 만들기
+4. 점검 경고와 PNG를 보고 고치기를 반복
+5. 대화창에 PNG를 보내고 `excali -d` 로 뷰어 열기
+
+### 직접 보기
+
+```bash
+excali ~/diagrams
+```
+
+| 명령 | 설명 |
+|---|---|
+| `excali [파일 또는 폴더]` | 뷰어로 엽니다. 기본은 현재 폴더입니다. |
+| `excali -d [파일 또는 폴더]` | 뷰어를 백그라운드로 띄웁니다. |
+| `excali png <파일.excalidraw> [출력.png]` | 뷰어와 같은 폰트로 PNG를 만듭니다. |
+| `excali new <이름>` | `~/diagrams/src/<이름>.mjs` 그림 스크립트 틀을 만듭니다. |
+| `excali build <이름>` | 스크립트를 실행하고 점검한 뒤 `.excalidraw`, `.png`를 만듭니다. |
+| `excali stop` | 백그라운드 뷰어를 모두 끕니다. |
+
+같은 폴더를 보는 뷰어가 이미 떠 있으면 새로 띄우지 않고, 열린 화면이 해당 파일로 넘어갑니다. 그림 폴더는 `EXCALI_HOME` 환경 변수로 바꿀 수 있습니다(기본 `~/diagrams`).
+
+뷰어는 보기 전용입니다. 고치고 싶으면 에이전트에게 말하거나, `.excalidraw` 파일을 [excalidraw.com](https://excalidraw.com)에 끌어다 놓고 편집하세요.
+
+## Scene API
+
+```js
+import { Scene } from "excalidraw-for-agent/scene";
+
+const scene = new Scene();
+scene.text({ x: 60, y: 20, text: "주문 결제 흐름", size: 30 });
+
+const app = scene.box({ cx: 130, cy: 200, label: "사용자 앱", color: "blue" });
+const api = scene.box({ cx: 600, cy: 200, label: "주문 API", color: "yellow" });
+const check = scene.box({ cx: 600, cy: 440, label: "재고 있음?", color: "orange", shape: "diamond" });
+
+scene.arrow(app, api, { label: "POST /orders" });
+scene.arrow(api, check, { fromSide: "bottom", toSide: "top" });
+scene.group([api, check], { label: "백엔드" });
+
+scene.save("/path/to/order-flow.excalidraw");
+```
+
+| 메서드 | 설명 |
+|---|---|
+| `text({ x, y, text, size, color, align })` | 자유 위치 글자 |
+| `box({ cx, cy \| x, y, label, color, shape, w, h, dashed })` | 라벨이 든 사각형·타원·마름모. 크기를 빼면 라벨에 맞춥니다. |
+| `arrow(from, to, { label, fromSide, toSide, dashed, color, head, tail })` | 두 도형에 붙는 화살표 |
+| `path(points, { arrow, dashed, color, width })` | 도형에 안 붙는 꺾은선 |
+| `group(shapes, { label, padding })` | 여러 도형을 감싸는 점선 영역 |
+| `sequence({ participants, steps, gap, rowHeight })` | 시퀀스 다이어그램 |
+| `lint()` | 라벨이 화살표보다 긴 곳, 겹친 도형을 찾습니다. `save()`가 자동으로 부릅니다. |
+
+색: `blue` `green` `yellow` `orange` `purple` `gray` `red` `white` `none`
+
+전체 예시는 [examples/](examples/)에 있습니다. `npm run example`로 `examples/out/`에 만들어 볼 수 있습니다.
+
+## 동작 방식
+
+- 뷰어는 `127.0.0.1`에만 열리는 작은 Node HTTP 서버(5177번부터 빈 포트)입니다. 폴더를 감시하다가 `.excalidraw`가 바뀌면 SSE로 화면에 알립니다.
+- 화면은 `@excalidraw/excalidraw` 0.18을 보기 전용·젠 모드로 띄운 것입니다.
+- PNG는 같은 화면을 헤드리스 Chromium(`playwright-core`)으로 열어 Excalidraw의 `exportToBlob`으로 뽑습니다. 그래서 뷰어와 PNG의 폰트가 같습니다.
+
+## 라이선스
+
+- 코드: MIT
+- `fonts/NanumPenScript-Regular.ttf`: NAVER 나눔손글씨 펜, [SIL Open Font License 1.1](fonts/OFL.txt)
