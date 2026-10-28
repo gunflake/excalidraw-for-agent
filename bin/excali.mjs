@@ -31,6 +31,8 @@ const DEFAULT_PORT = 5177;
 const PORT_SCAN = 10;
 const CHANGE_DEBOUNCE_MS = 150;
 const UPLOAD_LIMIT_BYTES = 20 * 1024 * 1024;
+const RECENT_PATH = join(homedir(), ".excali", "recent.json");
+const RECENT_LIMIT = 20;
 const USAGE = `사용법:
   excali [-d] [파일.excalidraw | 폴더]     뷰어로 보기 (기본: 현재 폴더, -d는 백그라운드 실행)
   excali png <파일.excalidraw> [출력.png]  뷰어와 같은 폰트로 PNG 만들기
@@ -44,6 +46,28 @@ const USAGE = `사용법:
 /** 폴더 안의 .excalidraw 파일 이름을 정렬해 돌려준다. */
 function listScenes(root) {
   return readdirSync(root).filter((name) => name.endsWith(".excalidraw")).sort();
+}
+
+/** 최근에 연 장면의 절대 경로를 최근 순으로 돌려준다. 지워진 파일은 뺀다. */
+function readRecent() {
+  if (!existsSync(RECENT_PATH)) return [];
+  return JSON.parse(readFileSync(RECENT_PATH, "utf8")).filter((path) => existsSync(path));
+}
+
+/** 연 장면을 최근 목록 맨 앞에 기록한다. */
+function recordRecent(path) {
+  const recent = [path, ...readRecent().filter((saved) => saved !== path)].slice(0, RECENT_LIMIT);
+  mkdirSync(dirname(RECENT_PATH), { recursive: true });
+  writeFileSync(RECENT_PATH, JSON.stringify(recent, null, 2));
+}
+
+/** 최근 목록을 화면용 항목으로 바꾼다. 이 폴더 파일은 이름으로, 다른 폴더 파일은 절대 경로로 연다. */
+function recentEntries(root) {
+  return readRecent().map((path) => ({
+    key: dirname(path) === root ? basename(path) : path,
+    name: basename(path),
+    folder: dirname(path).replace(homedir(), "~"),
+  }));
 }
 
 /** 파일 또는 폴더 인자를 (폴더, 처음 열 파일) 쌍으로 바꾼다. */
@@ -158,10 +182,17 @@ function createViewerServer(root) {
       return response.end(JSON.stringify({ files: listScenes(root) }));
     }
 
+    if (url.pathname === "/api/recent") {
+      return sendJson(response, 200, { recent: recentEntries(root) });
+    }
+
     if (url.pathname === "/api/scene") {
       const file = url.searchParams.get("file");
-      if (!listScenes(root).includes(file)) return response.writeHead(404).end();
-      return sendFile(response, join(root, file));
+      const path = file.startsWith("/") ? file : join(root, file);
+      const allowed = file.startsWith("/") ? readRecent().includes(path) : listScenes(root).includes(file);
+      if (!allowed) return response.writeHead(404).end();
+      if (url.searchParams.has("recent")) recordRecent(path);
+      return sendFile(response, path);
     }
 
     if (url.pathname === "/api/upload" && request.method === "POST") {

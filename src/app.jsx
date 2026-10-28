@@ -11,6 +11,7 @@ const KOREAN_FONT_URL = "/korean/NanumPenScript-Regular.ttf";
 const KOREAN_SIZE_ADJUST = "145%";
 const DEFAULT_FONT_ID = "gangwon-bold";
 const FONT_STORAGE_KEY = "excali.font";
+const RECENT_SHOWN = 10;
 const FONT_SLOT_NAME = "Helvetica";
 const FONT_SLOT_FAMILY = FONT_FAMILY.Helvetica;
 const FONT_OPTIONS = [
@@ -66,10 +67,21 @@ async function fetchFiles() {
   return (await response.json()).files;
 }
 
-/** 서버에서 .excalidraw 장면 JSON을 읽는다. */
-async function fetchScene(file) {
-  const response = await fetch(`/api/scene?file=${encodeURIComponent(file)}`);
+/** 서버에서 최근에 연 장면 목록을 읽는다. */
+async function fetchRecent() {
+  const response = await fetch("/api/recent");
+  return (await response.json()).recent;
+}
+
+/** 서버에서 .excalidraw 장면 JSON을 읽는다. 뷰어에서 연 경우에만 최근 목록에 남긴다. */
+async function fetchScene(file, recordRecent = false) {
+  const response = await fetch(`/api/scene?file=${encodeURIComponent(file)}${recordRecent ? "&recent" : ""}`);
   return response.json();
+}
+
+/** 파일 이름이나 절대 경로에서 확장자를 뺀 표시 이름을 만든다. */
+function sceneLabel(key) {
+  return key.split("/").pop().replace(/\.excalidraw$/, "");
 }
 
 /** 드롭한 파일을 서버 폴더에 저장하고 저장된 파일 이름을 돌려준다. */
@@ -94,18 +106,36 @@ async function exportScene(scene) {
   });
 }
 
-function FileList({ files, current, onSelect }) {
-  if (files.length < 2) return null;
+function FileButton({ fileKey, folder, current, onSelect }) {
+  return (
+    <button
+      className={fileKey === current ? "active" : ""}
+      title={folder ? `${folder}/${sceneLabel(fileKey)}.excalidraw` : undefined}
+      onClick={() => onSelect(fileKey)}
+    >
+      {sceneLabel(fileKey)}
+      {folder && <span className="folder">{folder}</span>}
+    </button>
+  );
+}
+
+function FileList({ files, recent, current, onSelect }) {
+  if (files.length < 2 && recent.length < 2) return null;
   return (
     <nav className="file-list">
+      {recent.length > 0 && <h2>최근에 연 파일</h2>}
+      {recent.slice(0, RECENT_SHOWN).map(({ key, folder }) => (
+        <FileButton
+          key={key}
+          fileKey={key}
+          folder={key.startsWith("/") ? folder : null}
+          current={current}
+          onSelect={onSelect}
+        />
+      ))}
+      <h2>이 폴더</h2>
       {files.map((file) => (
-        <button
-          key={file}
-          className={file === current ? "active" : ""}
-          onClick={() => onSelect(file)}
-        >
-          {file.replace(/\.excalidraw$/, "")}
-        </button>
+        <FileButton key={file} fileKey={file} current={current} onSelect={onSelect} />
       ))}
     </nav>
   );
@@ -123,10 +153,11 @@ function FontPicker({ value, onChange }) {
   );
 }
 
-function Viewer({ initialFiles, initialFile, initialFont }) {
+function Viewer({ initialFiles, initialRecent, initialFile, initialFont }) {
   const [files, setFiles] = useState(initialFiles);
   const [current, setCurrent] = useState(initialFile);
   const [font, setFont] = useState(initialFont);
+  const [recent, setRecent] = useState(initialRecent);
   const [scene, setScene] = useState(null);
   const [dragging, setDragging] = useState(false);
   const [notice, setNotice] = useState(null);
@@ -171,7 +202,7 @@ function Viewer({ initialFiles, initialFile, initialFont }) {
   }, []);
 
   const load = useCallback(async (file, keepView) => {
-    const nextScene = await fetchScene(file);
+    const nextScene = await fetchScene(file, !keepView);
     const elements = applyFont(nextScene.elements);
     if (keepView && apiRef.current) {
       apiRef.current.updateScene({ elements });
@@ -188,11 +219,11 @@ function Viewer({ initialFiles, initialFile, initialFont }) {
   }, [current, load]);
 
   useEffect(() => {
-    load(current, false);
+    load(current, false).then(fetchRecent).then(setRecent);
     const url = new URL(window.location.href);
     url.searchParams.set("file", current);
     window.history.replaceState(null, "", url);
-    document.title = `${current} · excali`;
+    document.title = `${sceneLabel(current)} · excali`;
   }, [current, load]);
 
   useEffect(() => {
@@ -220,7 +251,7 @@ function Viewer({ initialFiles, initialFile, initialFont }) {
         </div>
       )}
       {notice && <div className="notice">{notice}</div>}
-      <FileList files={files} current={current} onSelect={setCurrent} />
+      <FileList files={files} recent={recent} current={current} onSelect={setCurrent} />
       <main>
         <FontPicker value={font} onChange={changeFont} />
         {scene && (
@@ -247,13 +278,14 @@ async function main() {
   window.__fontsReady = true;
   if (new URLSearchParams(window.location.search).has("headless")) return;
 
-  const files = await fetchFiles();
+  const [files, recent] = await Promise.all([fetchFiles(), fetchRecent()]);
   const requested = new URLSearchParams(window.location.search).get("file");
-  const initialFile = files.includes(requested) ? requested : files[0];
+  const openable = [...files, ...recent.map(({ key }) => key)];
+  const initialFile = openable.includes(requested) ? requested : files[0];
   const initialFont = readFontChoice();
   await registerSlotFont(initialFont);
   createRoot(document.getElementById("root")).render(
-    <Viewer initialFiles={files} initialFile={initialFile} initialFont={initialFont} />,
+    <Viewer initialFiles={files} initialRecent={recent} initialFile={initialFile} initialFont={initialFont} />,
   );
 }
 

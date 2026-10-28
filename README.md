@@ -22,6 +22,51 @@ PNG에서 한글은 나눔손글씨 펜으로 보입니다. Excalidraw 기본 �
 
 ## 설치
 
+### 에이전트에게 맡기기 (추천)
+
+Claude Code나 Codex 같은 에이전트에게 아래 문장을 그대로 붙여 넣으세요. 설치, 스킬 연결, 확인용 그림까지 에이전트가 끝냅니다.
+
+```text
+https://github.com/gunflake/excalidraw-for-agent 를 설치해줘.
+README의 "에이전트용 설치 절차"를 순서대로 따르고, 끝나면 확인용 그림을 하나 그려서 보여줘.
+```
+
+설치가 끝나면 새 세션에서 "이 흐름 그림으로 그려줘"처럼 말하면 됩니다.
+
+### 에이전트용 설치 절차
+
+> 이 절은 설치를 맡은 에이전트를 위한 것입니다. 위에서부터 순서대로 실행하고, 실패한 단계는 원인을 고친 뒤 다시 실행하세요. 이미 설치되어 있으면 1단계에서 최신으로 받고 나머지를 그대로 다시 실행해도 안전합니다.
+
+1. **준비 확인.** `node --version`이 20 이상이어야 합니다. 아니면 사용자에게 Node.js 20 이상 설치를 요청하고 멈춥니다.
+2. **내려받기.** `~/Projects/excalidraw-for-agent`가 없으면 clone하고, 있으면 최신으로 받습니다.
+   ```bash
+   git clone https://github.com/gunflake/excalidraw-for-agent.git ~/Projects/excalidraw-for-agent
+   ```
+   ```bash
+   git -C ~/Projects/excalidraw-for-agent pull --ff-only
+   ```
+3. **스킬 폴더 만들기.** `install.sh`는 이미 있는 스킬 폴더에만 스킬을 연결합니다. 지금 실행 중인 에이전트의 스킬 폴더를 먼저 만듭니다. Claude Code는 `~/.claude/skills`, Codex는 `~/.codex/skills`입니다.
+   ```bash
+   mkdir -p ~/.claude/skills
+   ```
+4. **설치.** 의존성 설치, 뷰어 빌드, `excali` 명령 연결, 스킬 연결을 한 번에 합니다.
+   ```bash
+   ~/Projects/excalidraw-for-agent/install.sh
+   ```
+5. **PATH 확인.** 출력에 "PATH에 없습니다"가 나왔으면 사용자의 셸 설정(`~/.zshrc` 또는 `~/.bashrc`)에 `export PATH="$HOME/.local/bin:$PATH"`를 추가해도 되는지 묻고, 허락받으면 추가합니다. 이번 세션에서는 `~/.local/bin/excali`처럼 전체 경로로 실행합니다.
+6. **PNG용 브라우저 확인.** Google Chrome이 없으면 아래 명령으로 Chromium을 받습니다. 약 100MB를 내려받으므로 사용자에게 먼저 알립니다.
+   ```bash
+   cd ~/Projects/excalidraw-for-agent && npx playwright install chromium
+   ```
+7. **동작 확인.** 확인용 그림을 만들어 PNG가 생기는지 봅니다.
+   ```bash
+   excali new install-check && excali build install-check
+   ```
+   `~/diagrams/install-check.png`가 생기면 그 PNG를 사용자에게 보여 주고 `excali -d ~/diagrams/install-check.excalidraw`로 뷰어를 엽니다.
+8. **보고.** 연결된 스킬 경로(`ls -l ~/.claude/skills/excalidraw-diagram` 등)와 확인용 PNG 경로를 알려 줍니다. 스킬은 새 세션부터 확실히 잡히니, 새 세션에서 그림을 요청하라고 안내합니다.
+
+### 직접 설치
+
 설치 프로그램이 아니라 **내려받아 실행하는 방식**입니다. Node.js 20 이상만 있으면 됩니다.
 
 ```bash
@@ -76,6 +121,8 @@ excali ~/diagrams
 | `excali stop` | 백그라운드 뷰어를 모두 끕니다. |
 
 같은 폴더를 보는 뷰어가 이미 떠 있으면 새로 띄우지 않고, 열린 화면이 해당 파일로 넘어갑니다. 그림 폴더는 `EXCALI_HOME` 환경 변수로 바꿀 수 있습니다(기본 `~/diagrams`).
+
+왼쪽 목록 위쪽의 "최근에 연 파일"에는 뷰어로 열었던 그림이 최근 순으로 10개까지 보입니다. 다른 폴더에서 연 그림도 누르면 지금 뷰어에서 바로 열립니다. 기록은 `~/.excali/recent.json`에 20개까지 남고, 지워진 파일은 목록에서 빠집니다. PNG를 만들 때는 기록하지 않습니다. 다른 폴더의 그림은 파일이 바뀌어도 화면이 저절로 다시 그려지지 않으니 새로고침하세요.
 
 다른 곳에 있는 `.excalidraw` 파일은 뷰어 화면에 끌어다 놓으면 보고 있는 폴더에 저장한 뒤 바로 엽니다. 같은 이름이 있으면 덮어쓰지 않고 `이름-2.excalidraw`처럼 번호를 붙여 저장합니다.
 
