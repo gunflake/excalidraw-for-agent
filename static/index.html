@@ -21,6 +21,20 @@
       }
       .file-list button:hover { background: #e9ecef; }
       .file-list button.active { background: #d0ebff; color: #1864ab; font-weight: 600; }
+      .font-picker {
+        position: absolute; top: 16px; right: 16px; z-index: 10; padding: 6px 8px;
+        border: 1px solid #ced4da; border-radius: 6px; background: #fff; color: #343a40;
+        font: 14px -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", sans-serif;
+      }
+      .drop-overlay, .notice { font: 16px -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", sans-serif; }
+      .drop-overlay {
+        position: fixed; inset: 0; z-index: 1000; display: flex; align-items: center; justify-content: center;
+        background: rgba(208, 235, 255, 0.85); border: 3px dashed #1c7ed6; color: #1864ab; font-weight: 600;
+      }
+      .notice {
+        position: fixed; left: 50%; bottom: 24px; z-index: 1001; transform: translateX(-50%);
+        padding: 10px 16px; border-radius: 8px; background: #343a40; color: #fff;
+      }
     </style>
   </head>
   <body>

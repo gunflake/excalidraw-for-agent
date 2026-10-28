@@ -18,7 +18,7 @@ Mermaid보다 보기 좋고, 손으로 그린 느낌의 그림을 에이전트�
 | 로컬 뷰어 | 보기 전용 Excalidraw 화면입니다. 파일이 바뀌면 바로 다시 그리고, 새 그림이 생기면 그 그림으로 넘어갑니다. |
 | `skill/excalidraw-diagram` | 에이전트가 언제, 어떻게 그릴지 정한 스킬입니다. |
 
-한글은 나눔손글씨 펜으로 보입니다. Excalidraw 기본 손글씨 폰트(Excalifont)에 한글 글리프가 없어서, 한글 범위만 나눔손글씨로 바꿔 끼웁니다.
+PNG에서 한글은 나눔손글씨 펜으로 보입니다. Excalidraw 기본 손글씨 폰트(Excalifont)에 한글 글리프가 없어서, 한글 범위만 나눔손글씨로 바꿔 끼웁니다.
 
 ## 설치
 
@@ -77,6 +77,10 @@ excali ~/diagrams
 
 같은 폴더를 보는 뷰어가 이미 떠 있으면 새로 띄우지 않고, 열린 화면이 해당 파일로 넘어갑니다. 그림 폴더는 `EXCALI_HOME` 환경 변수로 바꿀 수 있습니다(기본 `~/diagrams`).
 
+다른 곳에 있는 `.excalidraw` 파일은 뷰어 화면에 끌어다 놓으면 보고 있는 폴더에 저장한 뒤 바로 엽니다. 같은 이름이 있으면 덮어쓰지 않고 `이름-2.excalidraw`처럼 번호를 붙여 저장합니다.
+
+뷰어는 기본으로 강원교육모두 Bold로 글자를 보여 줍니다. 오른쪽 위 메뉴에서 Slant Sans나 Gowun Dodum(고운돋움)으로 바꿀 수 있고, 고른 글꼴은 브라우저에 기억됩니다. 뷰어 화면에만 적용되고, `.excalidraw` 파일과 `excali png`·`excali build`로 만든 PNG는 손글씨 그대로입니다.
+
 뷰어는 보기 전용입니다. 고치고 싶으면 에이전트에게 말하거나, `.excalidraw` 파일을 [excalidraw.com](https://excalidraw.com)에 끌어다 놓고 편집하세요.
 
 ## Scene API
@@ -122,3 +126,6 @@ scene.save("/path/to/order-flow.excalidraw");
 
 - 코드: MIT
 - `fonts/NanumPenScript-Regular.ttf`: NAVER 나눔손글씨 펜, [SIL Open Font License 1.1](fonts/OFL.txt)
+- `fonts/GowunDodum-Regular.ttf`: 고운돋움, [SIL Open Font License 1.1](fonts/OFL-GowunDodum.txt)
+- `fonts/SlantSans-Medium.otf`: G마켓 산스 Medium을 7.7도 기울여 이름을 바꾼 글꼴, [SIL Open Font License 1.1](fonts/OFL-SlantSans.txt)
+- `fonts/GangwonEduModu-Bold.otf`: 강원교육모두체 Bold, 저작권 강원특별자치도교육청([www.gwe.go.kr](https://www.gwe.go.kr)). 무료로 쓰고 배포할 수 있으며 유료 판매는 금지됩니다. 원본 파일은 브라우저가 거부해서, CFF 글꼴 이름의 공백을 없애고 깨진 `kern` 표를 뺐습니다.

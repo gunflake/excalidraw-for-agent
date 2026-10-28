@@ -23,12 +23,14 @@ const MIME = {
   ".json": "application/json; charset=utf-8",
   ".woff2": "font/woff2",
   ".ttf": "font/ttf",
+  ".otf": "font/otf",
 };
 const DIAGRAMS_DIR = process.env.EXCALI_HOME ?? join(homedir(), "diagrams");
 const SCENE_LIB = join(APP_DIR, "lib/scene.mjs");
 const DEFAULT_PORT = 5177;
 const PORT_SCAN = 10;
 const CHANGE_DEBOUNCE_MS = 150;
+const UPLOAD_LIMIT_BYTES = 20 * 1024 * 1024;
 const USAGE = `사용법:
   excali [-d] [파일.excalidraw | 폴더]     뷰어로 보기 (기본: 현재 폴더, -d는 백그라운드 실행)
   excali png <파일.excalidraw> [출력.png]  뷰어와 같은 폰트로 PNG 만들기
@@ -53,6 +55,55 @@ function resolveTarget(target) {
   }
   if (statSync(absolute).isDirectory()) return { root: absolute, initial: listScenes(absolute)[0] };
   return { root: dirname(absolute), initial: basename(absolute) };
+}
+
+/** 같은 이름이 있으면 `이름-2.excalidraw`처럼 번호를 붙여 덮어쓰지 않을 이름을 고른다. */
+function uniqueSceneName(root, requested) {
+  const stem = basename(requested).replace(/\.excalidraw$/, "") || "dropped";
+  let name = `${stem}.excalidraw`;
+  for (let index = 2; existsSync(join(root, name)); index += 1) name = `${stem}-${index}.excalidraw`;
+  return name;
+}
+
+/** 요청 본문을 문자열로 읽는다. 한도를 넘으면 실패한다. */
+function readBody(request) {
+  return new Promise((resolveBody, reject) => {
+    const chunks = [];
+    let size = 0;
+    request.on("data", (chunk) => {
+      size += chunk.length;
+      if (size > UPLOAD_LIMIT_BYTES) {
+        reject(new Error("파일이 너무 큽니다."));
+        request.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
+    request.on("end", () => resolveBody(Buffer.concat(chunks).toString("utf8")));
+    request.on("error", reject);
+  });
+}
+
+/** 드롭한 장면을 검사해 폴더에 저장하고 저장한 파일 이름을 돌려준다. */
+async function saveUploadedScene(root, request, requested) {
+  const body = await readBody(request);
+  let scene;
+  try {
+    scene = JSON.parse(body);
+  } catch {
+    throw new Error("JSON 형식이 아닙니다.");
+  }
+  if (scene?.type !== "excalidraw" || !Array.isArray(scene.elements)) {
+    throw new Error("Excalidraw 장면 파일이 아닙니다.");
+  }
+  const name = uniqueSceneName(root, requested ?? "");
+  writeFileSync(join(root, name), body);
+  return name;
+}
+
+function sendJson(response, status, payload) {
+  response.writeHead(status, { "Content-Type": MIME[".json"] });
+  response.end(JSON.stringify(payload));
 }
 
 function sendFile(response, path) {
@@ -111,6 +162,14 @@ function createViewerServer(root) {
       const file = url.searchParams.get("file");
       if (!listScenes(root).includes(file)) return response.writeHead(404).end();
       return sendFile(response, join(root, file));
+    }
+
+    if (url.pathname === "/api/upload" && request.method === "POST") {
+      saveUploadedScene(root, request, url.searchParams.get("name")).then(
+        (file) => sendJson(response, 201, { file }),
+        (error) => sendJson(response, 400, { error: error.message }),
+      );
+      return;
     }
 
     if (url.pathname === "/events") {
