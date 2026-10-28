@@ -7,7 +7,27 @@ AI 에이전트(Claude Code, Codex 등)가 **Excalidraw로 다이어그램을 �
 
 Mermaid보다 보기 좋고, 손으로 그린 느낌의 그림을 에이전트에게 맡기는 것이 목적입니다.
 
-![웹 서비스 구조도 예시](docs/web-architecture.png)
+## 활용 예시
+
+[examples/](examples/)의 스크립트로 만든 그림입니다. `npm run example`로 `examples/out/`에 다시 만들 수 있습니다.
+
+| 흐름도 (분기·묶음) | 시퀀스 다이어그램 |
+|---|---|
+| ![주문 결제 흐름](docs/order-flow.png) | ![Kafka 리밸런싱 중복 처리](docs/kafka-rebalance.png) |
+| [`order-flow.mjs`](examples/order-flow.mjs) | [`kafka-rebalance.mjs`](examples/kafka-rebalance.mjs) |
+| **구조도 (서버·저장소)** | **상태 전이도** |
+| ![웹 서비스 구조도](docs/web-architecture.png) | ![주문 상태 전이도](docs/order-state.png) |
+| [`web-architecture.mjs`](examples/web-architecture.mjs) | [`order-state.mjs`](examples/order-state.mjs) |
+| **파이프라인 (판단·되돌림)** | |
+| ![CI/CD 배포 파이프라인](docs/deploy-pipeline.png) | |
+| [`deploy-pipeline.mjs`](examples/deploy-pipeline.mjs) | |
+
+에이전트에게는 이렇게 말하면 됩니다.
+
+- "회원가입 흐름을 플로차트로 그려줘" → 흐름도
+- "로그인 과정에서 브라우저·서버·DB가 주고받는 걸 시퀀스 다이어그램으로" → 시퀀스
+- "우리 서비스 서버 구성을 구조도로 그려줘" → 구조도
+- "주문 상태가 어떻게 바뀌는지 그림으로" → 상태 전이도
 
 ## 구성
 
@@ -165,28 +185,6 @@ excali ~/diagrams
 | ![나눔손글씨 펜](docs/font-nanum-pen.png) |
 
 뷰어는 보기 전용입니다. 고치고 싶으면 에이전트에게 말하거나, `.excalidraw` 파일을 [excalidraw.com](https://excalidraw.com)에 끌어다 놓고 편집하세요.
-
-## 활용 예시
-
-[examples/](examples/)의 스크립트로 만든 그림입니다. `npm run example`로 `examples/out/`에 다시 만들 수 있습니다.
-
-| 흐름도 (분기·묶음) | 시퀀스 다이어그램 |
-|---|---|
-| ![주문 결제 흐름](docs/order-flow.png) | ![Kafka 리밸런싱 중복 처리](docs/kafka-rebalance.png) |
-| [`order-flow.mjs`](examples/order-flow.mjs) | [`kafka-rebalance.mjs`](examples/kafka-rebalance.mjs) |
-| **구조도 (서버·저장소)** | **상태 전이도** |
-| ![웹 서비스 구조도](docs/web-architecture.png) | ![주문 상태 전이도](docs/order-state.png) |
-| [`web-architecture.mjs`](examples/web-architecture.mjs) | [`order-state.mjs`](examples/order-state.mjs) |
-| **파이프라인 (판단·되돌림)** | |
-| ![CI/CD 배포 파이프라인](docs/deploy-pipeline.png) | |
-| [`deploy-pipeline.mjs`](examples/deploy-pipeline.mjs) | |
-
-에이전트에게는 이렇게 말하면 됩니다.
-
-- "회원가입 흐름을 플로차트로 그려줘" → 흐름도
-- "로그인 과정에서 브라우저·서버·DB가 주고받는 걸 시퀀스 다이어그램으로" → 시퀀스
-- "우리 서비스 서버 구성을 구조도로 그려줘" → 구조도
-- "주문 상태가 어떻게 바뀌는지 그림으로" → 상태 전이도
 
 ## Scene API
 
