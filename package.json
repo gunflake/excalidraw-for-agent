@@ -12,7 +12,8 @@
   },
   "scripts": {
     "build": "esbuild src/app.jsx --bundle --format=esm --jsx=automatic --minify --conditions=production --external:*.woff2 --define:process.env.NODE_ENV=\\\"production\\\" --outdir=dist",
-    "example": "node examples/kafka-rebalance.mjs && node examples/order-flow.mjs && node examples/web-architecture.mjs && node examples/order-state.mjs && node examples/deploy-pipeline.mjs"
+    "example": "node examples/kafka-rebalance.mjs && node examples/order-flow.mjs && node examples/web-architecture.mjs && node examples/order-state.mjs && node examples/deploy-pipeline.mjs",
+    "package": "node scripts/package.mjs"
   },
   "dependencies": {
     "@excalidraw/excalidraw": "0.18.0",

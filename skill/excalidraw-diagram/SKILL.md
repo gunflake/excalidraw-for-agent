@@ -7,7 +7,7 @@ description: 구조, 흐름, 순서, 관계를 손그림 느낌의 Excalidraw �
 
 에이전트가 그리고, 사람은 확인한다. 그림은 JS 스크립트(`~/diagrams/src/<이름>.mjs`)로 만들고, `excali build`로 `.excalidraw`와 `.png`를 만든 뒤, PNG를 직접 보고 고친다. 다 되면 PNG를 대화창에 보내고 뷰어를 연다.
 
-`excali`가 없으면(`command -v excali` 실패) https://github.com/gunflake/excalidraw-for-agent 를 clone 해서 `./install.sh`(Windows는 `install.ps1`)를 실행하라고 안내하고 멈춘다.
+`excali`가 PATH에 없으면 `~/.local/bin/excali`(Windows는 `~/.excali/bin/excali.cmd`)를 전체 경로로 쓴다. 그것도 없으면 https://github.com/gunflake/excalidraw-for-agent README의 "에이전트용 설치 절차"로 설치해도 되는지 사용자에게 묻고 멈춘다. Node.js가 없어도 설치된다.
 
 ## 작업 순서
 

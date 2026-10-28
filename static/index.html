@@ -9,17 +9,29 @@
       html, body, #root { margin: 0; height: 100%; }
       .layout { display: flex; height: 100%; }
       main { flex: 1; position: relative; }
+      .sidebar { position: relative; flex: none; width: 220px; }
+      .sidebar.collapsed { width: 52px; }
+      .sidebar-rail { height: 100%; padding: 12px 8px; box-sizing: border-box; border-right: 1px solid #e9ecef; background: #f8f9fa; }
+      .sidebar-toggle {
+        display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; padding: 0;
+        border: 0; border-radius: 8px; background: #e9ecef; color: #495057; cursor: pointer;
+      }
+      .sidebar-toggle:hover { background: #dee2e6; color: #212529; }
       .file-list {
-        width: 220px; padding: 12px 8px; overflow-y: auto; box-sizing: border-box;
+        width: 220px; height: 100%; padding: 12px 8px; overflow-y: auto; box-sizing: border-box;
         border-right: 1px solid #e9ecef; background: #f8f9fa;
         font: 14px -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", sans-serif;
       }
-      .file-list button {
+      .sidebar.collapsed .file-list { position: absolute; top: 0; left: 0; z-index: 20; box-shadow: 4px 0 16px rgba(0, 0, 0, 0.12); visibility: hidden; }
+      .sidebar.collapsed:hover .file-list { visibility: visible; transition: visibility 0s 0.15s; }
+      .file-list header { display: flex; align-items: center; gap: 4px; margin-bottom: 8px; }
+      .file-list header h2 { margin: 0 6px; }
+      .file-list button:not(.sidebar-toggle) {
         display: block; width: 100%; padding: 8px 10px; margin-bottom: 2px; text-align: left;
         border: 0; border-radius: 6px; background: transparent; color: #343a40; cursor: pointer;
         overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: inherit;
       }
-      .file-list button:hover { background: #e9ecef; }
+      .file-list button:not(.sidebar-toggle):hover { background: #e9ecef; }
       .file-list button.active { background: #d0ebff; color: #1864ab; font-weight: 600; }
       .file-list h2 { margin: 12px 10px 6px; font-size: 12px; font-weight: 600; color: #868e96; }
       .file-list h2:first-child { margin-top: 0; }

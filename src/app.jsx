@@ -10,7 +10,6 @@ const HANDWRITTEN_FAMILIES = ["Excalifont", "Virgil"];
 const KOREAN_FONT_URL = "/korean/NanumPenScript-Regular.ttf";
 const KOREAN_SIZE_ADJUST = "145%";
 const DEFAULT_FONT_ID = "gangwon-bold";
-const FONT_STORAGE_KEY = "excali.font";
 const RECENT_SHOWN = 10;
 const FONT_SLOT_NAME = "Helvetica";
 const FONT_SLOT_FAMILY = FONT_FAMILY.Helvetica;
@@ -18,13 +17,13 @@ const FONT_OPTIONS = [
   { id: DEFAULT_FONT_ID, label: "강원교육모두 Bold (기본)", url: "/korean/GangwonEduModu-Bold.otf" },
   { id: "slant-sans", label: "Slant Sans", url: "/korean/SlantSans-Medium.otf", sizeAdjust: "90%" },
   { id: "gowun-dodum", label: "Gowun Dodum", url: "/korean/GowunDodum-Regular.ttf" },
+  { id: "nanum-pen", label: "나눔손글씨 펜", url: KOREAN_FONT_URL, sizeAdjust: KOREAN_SIZE_ADJUST },
 ];
 
 let slotFace = null;
 
-/** 저장된 글꼴 선택을 읽는다. 저장된 값이 없거나 목록에 없으면 기본 글꼴로 돌린다. */
-function readFontChoice() {
-  const saved = window.localStorage.getItem(FONT_STORAGE_KEY);
+/** 저장된 글꼴 선택을 고른다. 저장된 값이 없거나 목록에 없으면 기본 글꼴로 돌린다. */
+function fontChoice(saved) {
   return FONT_OPTIONS.some((option) => option.id === saved) ? saved : DEFAULT_FONT_ID;
 }
 
@@ -67,7 +66,18 @@ async function fetchFiles() {
   return (await response.json()).files;
 }
 
-/** 서버에서 최근에 연 장면 목록을 읽는다. */
+/** 서버에 저장된 뷰어 설정을 읽는다. */
+async function fetchSettings() {
+  const response = await fetch("/api/settings");
+  return response.json();
+}
+
+/** 뷰어 설정 하나를 서버에 저장한다. */
+function saveSetting(key, value) {
+  return fetch(`/api/settings?${key}=${encodeURIComponent(value)}`, { method: "POST" });
+}
+
+/** 서버에서 뷰어로 연 장면 목록을 읽는다. */
 async function fetchRecent() {
   const response = await fetch("/api/recent");
   return (await response.json()).recent;
@@ -119,25 +129,40 @@ function FileButton({ fileKey, folder, current, onSelect }) {
   );
 }
 
-function FileList({ files, recent, current, onSelect }) {
-  if (files.length < 2 && recent.length < 2) return null;
+/** 크롬 사이드바처럼 선 세 개와 화살표로 펼치기·접기를 그린다. */
+function SidebarIcon({ expand }) {
   return (
-    <nav className="file-list">
-      {recent.length > 0 && <h2>최근에 연 파일</h2>}
-      {recent.slice(0, RECENT_SHOWN).map(({ key, folder }) => (
-        <FileButton
-          key={key}
-          fileKey={key}
-          folder={folder}
-          current={current}
-          onSelect={onSelect}
-        />
-      ))}
-      <h2>이 폴더</h2>
-      {files.map((file) => (
-        <FileButton key={file} fileKey={file} current={current} onSelect={onSelect} />
-      ))}
-    </nav>
+    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M9 5h8M11 10h6M9 15h8" />
+      <path d={expand ? "M3 7l3 3-3 3" : "M6 7l-3 3 3 3"} />
+    </svg>
+  );
+}
+
+function FileList({ files, current, onSelect, collapsed, onToggle }) {
+  if (files.length < 2) return null;
+  const toggleLabel = collapsed ? "목록 펼치기" : "목록 접기";
+  return (
+    <aside className={collapsed ? "sidebar collapsed" : "sidebar"}>
+      {collapsed && (
+        <div className="sidebar-rail">
+          <button className="sidebar-toggle" title={toggleLabel} onClick={onToggle}>
+            <SidebarIcon expand />
+          </button>
+        </div>
+      )}
+      <nav className="file-list">
+        <header>
+          <button className="sidebar-toggle" title={toggleLabel} onClick={onToggle}>
+            <SidebarIcon expand={collapsed} />
+          </button>
+          <h2>파일 목록</h2>
+        </header>
+        {files.slice(0, RECENT_SHOWN).map(({ key, folder }) => (
+          <FileButton key={key} fileKey={key} folder={folder} current={current} onSelect={onSelect} />
+        ))}
+      </nav>
+    </aside>
   );
 }
 
@@ -153,11 +178,11 @@ function FontPicker({ value, onChange }) {
   );
 }
 
-function Viewer({ initialFiles, initialRecent, initialFile, initialFont }) {
-  const [files, setFiles] = useState(initialFiles);
+function Viewer({ initialRecent, initialFile, initialFont, initialCollapsed }) {
   const [current, setCurrent] = useState(initialFile);
   const [font, setFont] = useState(initialFont);
   const [recent, setRecent] = useState(initialRecent);
+  const [collapsed, setCollapsed] = useState(initialCollapsed);
   const [scene, setScene] = useState(null);
   const [dragging, setDragging] = useState(false);
   const [notice, setNotice] = useState(null);
@@ -190,9 +215,7 @@ function Viewer({ initialFiles, initialRecent, initialFile, initialFont }) {
         showNotice(`${file.name}: ${error.message}`);
       }
     }
-    if (!opened) return;
-    setFiles(await fetchFiles());
-    setCurrent(opened);
+    if (opened) setCurrent(opened);
   }, [showNotice]);
 
   const fitToScreen = useCallback(() => {
@@ -213,10 +236,15 @@ function Viewer({ initialFiles, initialRecent, initialFile, initialFont }) {
 
   const changeFont = useCallback(async (fontId) => {
     await registerSlotFont(fontId);
-    window.localStorage.setItem(FONT_STORAGE_KEY, fontId);
+    saveSetting("font", fontId);
     setFont(fontId);
     await load(current, true);
   }, [current, load]);
+
+  const toggleList = useCallback(() => {
+    saveSetting("sidebar", collapsed ? "open" : "closed");
+    setCollapsed(!collapsed);
+  }, [collapsed]);
 
   useEffect(() => {
     load(current, false).then(fetchRecent).then(setRecent);
@@ -231,9 +259,7 @@ function Viewer({ initialFiles, initialRecent, initialFile, initialFont }) {
     events.onmessage = async (event) => {
       const changed = event.data;
       if (changed === current) return load(current, true);
-      const latest = await fetchFiles();
-      setFiles(latest);
-      if (latest.includes(changed)) setCurrent(changed);
+      if ((await fetchFiles()).includes(changed)) setCurrent(changed);
     };
     return () => events.close();
   }, [current, load]);
@@ -251,7 +277,7 @@ function Viewer({ initialFiles, initialRecent, initialFile, initialFont }) {
         </div>
       )}
       {notice && <div className="notice">{notice}</div>}
-      <FileList files={files} recent={recent} current={current} onSelect={setCurrent} />
+      <FileList files={recent} current={current} onSelect={setCurrent} collapsed={collapsed} onToggle={toggleList} />
       <main>
         <FontPicker value={font} onChange={changeFont} />
         {scene && (
@@ -278,14 +304,19 @@ async function main() {
   window.__fontsReady = true;
   if (new URLSearchParams(window.location.search).has("headless")) return;
 
-  const [files, recent] = await Promise.all([fetchFiles(), fetchRecent()]);
+  const [files, recent, settings] = await Promise.all([fetchFiles(), fetchRecent(), fetchSettings()]);
   const requested = new URLSearchParams(window.location.search).get("file");
   const openable = [...files, ...recent.map(({ key }) => key)];
   const initialFile = openable.includes(requested) ? requested : files[0];
-  const initialFont = readFontChoice();
+  const initialFont = fontChoice(settings.font);
   await registerSlotFont(initialFont);
   createRoot(document.getElementById("root")).render(
-    <Viewer initialFiles={files} initialRecent={recent} initialFile={initialFile} initialFont={initialFont} />,
+    <Viewer
+      initialRecent={recent}
+      initialFile={initialFile}
+      initialFont={initialFont}
+      initialCollapsed={settings.sidebar === "closed"}
+    />,
   );
 }
 

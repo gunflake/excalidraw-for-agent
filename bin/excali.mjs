@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { createServer } from "node:http";
 import { execFile, execFileSync, spawn } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, watch, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, watch, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, extname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -33,6 +33,8 @@ const CHANGE_DEBOUNCE_MS = 150;
 const UPLOAD_LIMIT_BYTES = 20 * 1024 * 1024;
 const RECENT_PATH = join(homedir(), ".excali", "recent.json");
 const RECENT_LIMIT = 20;
+const SETTINGS_PATH = join(homedir(), ".excali", "settings.json");
+const SETTING_KEYS = ["font", "sidebar"];
 const IS_WINDOWS = process.platform === "win32";
 const USAGE = `사용법:
   excali [-d] [파일.excalidraw | 폴더]     뷰어로 보기 (기본: 현재 폴더, -d는 백그라운드 실행)
@@ -40,6 +42,7 @@ const USAGE = `사용법:
   excali new <이름>                       ~/diagrams/src/<이름>.mjs 그림 스크립트 틀 만들기
   excali build <이름>                     스크립트 실행 → 점검 → ~/diagrams/<이름>.excalidraw, .png 생성
   excali stop                             백그라운드 뷰어 모두 끄기
+  excali setup-browser                    Chrome·Edge가 없을 때 PNG용 Chromium 받기 (약 100MB)
 
 같은 폴더를 보는 뷰어가 이미 떠 있으면 새로 띄우지 않고, 열린 화면이 그 파일로 넘어갑니다.
 그림 폴더는 EXCALI_HOME 환경 변수로 바꿀 수 있습니다 (기본: ~/diagrams).`;
@@ -49,17 +52,38 @@ function listScenes(root) {
   return readdirSync(root).filter((name) => name.endsWith(".excalidraw")).sort();
 }
 
-/** 최근에 연 장면의 절대 경로를 최근 순으로 돌려준다. 지워진 파일은 뺀다. */
+/** 뷰어로 연 장면의 절대 경로를 처음 연 순서의 역순으로 돌려준다. 지워진 파일은 뺀다. */
 function readRecent() {
   if (!existsSync(RECENT_PATH)) return [];
   return JSON.parse(readFileSync(RECENT_PATH, "utf8")).filter((path) => existsSync(path));
 }
 
-/** 연 장면을 최근 목록 맨 앞에 기록한다. */
+/** 임시 파일에 쓴 뒤 바꿔 넣어, 다른 뷰어가 반쯤 쓰인 JSON을 읽지 않게 한다. */
+function writeJsonAtomic(path, data) {
+  mkdirSync(dirname(path), { recursive: true });
+  const temp = `${path}.${process.pid}.tmp`;
+  writeFileSync(temp, JSON.stringify(data, null, 2));
+  renameSync(temp, path);
+}
+
+/** 뷰어 설정(글꼴, 목록 접힘)을 읽는다. 포트가 달라도 같은 설정을 쓰도록 브라우저가 아니라 파일에 둔다. */
+function readSettings() {
+  if (!existsSync(SETTINGS_PATH)) return {};
+  return JSON.parse(readFileSync(SETTINGS_PATH, "utf8"));
+}
+
+/** 요청에 담긴 설정 값만 덮어써 저장한다. */
+function writeSettings(params) {
+  const settings = readSettings();
+  SETTING_KEYS.filter((key) => params.has(key)).forEach((key) => (settings[key] = params.get(key)));
+  writeJsonAtomic(SETTINGS_PATH, settings);
+}
+
+/** 처음 연 장면만 목록 맨 앞에 더한다. 이미 있는 장면은 다시 열어도 자리가 바뀌지 않는다. */
 function recordRecent(path) {
-  const recent = [path, ...readRecent().filter((saved) => saved !== path)].slice(0, RECENT_LIMIT);
-  mkdirSync(dirname(RECENT_PATH), { recursive: true });
-  writeFileSync(RECENT_PATH, JSON.stringify(recent, null, 2));
+  const recent = readRecent();
+  if (recent.includes(path)) return;
+  writeJsonAtomic(RECENT_PATH, [path, ...recent].slice(0, RECENT_LIMIT));
 }
 
 /** 최근 목록을 화면용 항목으로 바꾼다. 이 폴더 파일은 이름으로, 다른 폴더 파일은 절대 경로로 연다. */
@@ -144,6 +168,14 @@ function sendFile(response, path) {
 }
 
 /** 정적 파일, 장면 API, 변경 알림(SSE)을 제공하는 서버를 만든다. */
+/** 이 컴퓨터의 뷰어 화면이나 excali 명령이 보낸 요청인지 본다. 다른 사이트의 POST와 DNS 리바인딩을 막는다. */
+function isLocalRequest(request) {
+  const host = request.headers.host ?? "";
+  if (!/^(127\.0\.0\.1|localhost):\d+$/.test(host)) return false;
+  const origin = request.headers.origin;
+  return request.method !== "POST" || !origin || origin === `http://${host}`;
+}
+
 function createViewerServer(root) {
   const listeners = new Set();
   const pending = new Map();
@@ -155,6 +187,7 @@ function createViewerServer(root) {
   });
 
   const server = createServer((request, response) => {
+    if (!isLocalRequest(request)) return response.writeHead(403).end();
     const url = new URL(request.url, "http://localhost");
     if (STATIC_ROUTES[url.pathname]) return sendFile(response, STATIC_ROUTES[url.pathname]);
 
@@ -184,6 +217,15 @@ function createViewerServer(root) {
     if (url.pathname === "/api/files") {
       response.writeHead(200, { "Content-Type": MIME[".json"] });
       return response.end(JSON.stringify({ files: listScenes(root) }));
+    }
+
+    if (url.pathname === "/api/settings") {
+      if (request.method === "POST") {
+        writeSettings(url.searchParams);
+        response.writeHead(204).end();
+        return;
+      }
+      return sendJson(response, 200, readSettings());
     }
 
     if (url.pathname === "/api/recent") {
@@ -258,8 +300,8 @@ function installedBrowserPaths() {
   return ["/usr/bin/google-chrome", "/usr/bin/chromium", "/usr/bin/chromium-browser", "/usr/bin/microsoft-edge"];
 }
 
-/** 설치된 Chromium 계열 브라우저 실행 파일을 찾는다. */
-function findChromium() {
+/** 설치된 Chromium 계열 브라우저 실행 파일을 찾는다. 없으면 undefined를 돌려준다. */
+function locateChromium() {
   const cache = playwrightCacheDir();
   const shellName = IS_WINDOWS ? "chrome-headless-shell.exe" : "chrome-headless-shell";
   const shells = existsSync(cache)
@@ -271,9 +313,38 @@ function findChromium() {
       if (existsSync(executable)) return executable;
     }
   }
-  const installed = installedBrowserPaths().find((path) => existsSync(path));
-  if (installed) return installed;
-  throw new Error("Chromium을 찾지 못했습니다. Chrome이나 Edge를 설치하거나 `npx playwright install chromium`을 실행하세요.");
+  return installedBrowserPaths().find((path) => existsSync(path));
+}
+
+/** PNG 출력에 쓸 브라우저 실행 파일을 돌려준다. 없으면 받는 방법을 알려 주며 실패한다. */
+function findChromium() {
+  const executable = locateChromium();
+  if (executable) return executable;
+  throw new Error("Chromium을 찾지 못했습니다. Chrome이나 Edge를 설치하거나 `excali setup-browser`를 실행하세요.");
+}
+
+/** PNG 출력용 브라우저가 없을 때만 Chromium 헤드리스 셸을 받고, 실제로 띄워 쓸 수 있는지 확인한다. */
+async function setupBrowser() {
+  const cli = join(APP_DIR, "node_modules/playwright-core/cli.js");
+  let executable = locateChromium();
+  if (executable) {
+    console.log(`PNG용 브라우저가 이미 있습니다: ${executable}`);
+  } else {
+    const systemCa = process.allowedNodeEnvironmentFlags.has("--use-system-ca") ? ["--use-system-ca"] : [];
+    execFileSync(process.execPath, [...systemCa, cli, "install", "--only-shell", "chromium"], { stdio: "inherit" });
+    executable = findChromium();
+  }
+  const { chromium } = await import("playwright-core");
+  try {
+    await (await chromium.launch({ executablePath: executable })).close();
+  } catch (error) {
+    console.error(`PNG용 브라우저를 띄우지 못했습니다: ${error.message.split("\n")[0]}`);
+    if (process.platform === "linux") {
+      console.error(`Chromium이 쓰는 시스템 라이브러리가 없을 수 있습니다. Debian/Ubuntu라면 관리자 권한으로 한 번 실행하세요:\n  sudo "${process.execPath}" "${cli}" install-deps chromium`);
+    }
+    process.exit(1);
+  }
+  console.log(`PNG용 브라우저 준비 완료: ${executable}`);
 }
 
 /** 뷰어와 같은 폰트 설정으로 장면을 PNG 파일로 렌더링한다. */
@@ -341,20 +412,42 @@ async function openViewerInBackground(target) {
   process.exit(1);
 }
 
-/** 실행 중인 모든 excali 뷰어를 끈다. */
+/** 뷰어 프로세스가 끝나 포트가 닫힐 때까지 최대 3초 기다린다. 닫히면 true, 아직 열려 있으면 false. */
+async function waitUntilClosed(port) {
+  const deadline = Date.now() + 3000;
+  while (Date.now() < deadline) {
+    try {
+      await fetch(`http://127.0.0.1:${port}/api/info`, { signal: AbortSignal.timeout(300) });
+    } catch (error) {
+      if (error.cause?.code === "ECONNREFUSED") return true;
+    }
+    await new Promise((done) => setTimeout(done, 100));
+  }
+  return false;
+}
+
+/** 실행 중인 excali 뷰어를 모두 끈다. */
 async function stopViewers() {
   let stopped = 0;
+  const stuck = [];
   for (let port = DEFAULT_PORT; port < DEFAULT_PORT + PORT_SCAN; port += 1) {
     try {
       const info = await (await fetch(`http://127.0.0.1:${port}/api/info`, { signal: AbortSignal.timeout(300) })).json();
       if (info.app !== "excali") continue;
       await fetch(`http://127.0.0.1:${port}/api/stop`, { method: "POST" });
+      if (!(await waitUntilClosed(port))) {
+        stuck.push(port);
+        continue;
+      }
       stopped += 1;
     } catch {
       continue;
     }
   }
   console.log(`excali: 뷰어 ${stopped}개를 껐습니다.`);
+  if (stuck.length === 0) return;
+  console.error(`excali: 포트 ${stuck.join(", ")}의 뷰어가 꺼지지 않았습니다. 해당 node 프로세스를 직접 종료하세요.`);
+  process.exitCode = 1;
 }
 
 /** 새 그림 스크립트 틀을 ~/diagrams/src에 만든다. */
@@ -436,6 +529,8 @@ if (command === "-h" || command === "--help") {
   await (command === "new" ? createScript(rest[0]) : buildScript(rest[0]));
 } else if (command === "stop") {
   await stopViewers();
+} else if (command === "setup-browser") {
+  await setupBrowser();
 } else if (background) {
   await openViewerInBackground(command ?? ".");
 } else {
