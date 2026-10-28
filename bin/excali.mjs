@@ -52,10 +52,12 @@ function listScenes(root) {
   return readdirSync(root).filter((name) => name.endsWith(".excalidraw")).sort();
 }
 
-/** 뷰어로 연 장면의 절대 경로를 처음 연 순서의 역순으로 돌려준다. 지워진 파일은 뺀다. */
+/** 파일 목록 항목({ path, title })을 처음 연 순서의 역순으로 돌려준다. 절대 경로가 항목 id다. 지워진 파일은 뺀다. */
 function readRecent() {
   if (!existsSync(RECENT_PATH)) return [];
-  return JSON.parse(readFileSync(RECENT_PATH, "utf8")).filter((path) => existsSync(path));
+  return JSON.parse(readFileSync(RECENT_PATH, "utf8"))
+    .map((entry) => (typeof entry === "string" ? { path: entry } : entry))
+    .filter(({ path }) => existsSync(path));
 }
 
 /** 임시 파일에 쓴 뒤 바꿔 넣어, 다른 뷰어가 반쯤 쓰인 JSON을 읽지 않게 한다. */
@@ -82,20 +84,38 @@ function writeSettings(params) {
 /** 처음 연 장면만 목록 맨 앞에 더한다. 이미 있는 장면은 다시 열어도 자리가 바뀌지 않는다. */
 function recordRecent(path) {
   const recent = readRecent();
-  if (recent.includes(path)) return;
-  writeJsonAtomic(RECENT_PATH, [path, ...recent].slice(0, RECENT_LIMIT));
+  if (recent.some((entry) => entry.path === path)) return;
+  writeJsonAtomic(RECENT_PATH, [{ path }, ...recent].slice(0, RECENT_LIMIT));
 }
 
-/** 최근 목록을 화면용 항목으로 바꾼다. 이 폴더 파일은 이름으로, 다른 폴더 파일은 절대 경로로 연다. */
+/** 목록에 보일 이름만 바꾼다. 빈 이름이면 파일 이름으로 되돌린다. 디스크의 파일은 건드리지 않는다. */
+function renameRecent(path, title) {
+  const recent = readRecent().map((entry) =>
+    entry.path === path ? (title ? { path, title } : { path }) : entry,
+  );
+  writeJsonAtomic(RECENT_PATH, recent);
+}
+
+/** 목록에서만 뺀다. 파일은 그대로 두므로 다시 열면 목록 맨 앞에 돌아온다. */
+function removeRecent(path) {
+  writeJsonAtomic(RECENT_PATH, readRecent().filter((entry) => entry.path !== path));
+}
+
+/** 파일 목록을 화면용 항목으로 바꾼다. 다른 폴더 파일에는 폴더 위치를 붙인다. */
 function recentEntries(root) {
-  return readRecent().map((path) => {
-    const external = dirname(path) !== root;
-    return {
-      key: external ? path : basename(path),
-      name: basename(path),
-      folder: external ? dirname(path).replace(homedir(), "~") : null,
-    };
-  });
+  return readRecent().map(({ path, title }) => ({
+    path,
+    title: title ?? null,
+    folder: dirname(path) === root ? null : dirname(path).replace(homedir(), "~"),
+  }));
+}
+
+/** 요청한 장면을 절대 경로로 바꾼다. 이 폴더의 장면이나 목록에 있는 장면만 열 수 있다. */
+function resolveScene(root, file) {
+  if (!file) return null;
+  const path = isAbsolute(file) ? file : join(root, file);
+  const inRoot = dirname(path) === root && listScenes(root).includes(basename(path));
+  return inRoot || readRecent().some((entry) => entry.path === path) ? path : null;
 }
 
 /** 파일 또는 폴더 인자를 (폴더, 처음 열 파일) 쌍으로 바꾼다. */
@@ -183,7 +203,7 @@ function createViewerServer(root) {
   const watcher = watch(root, (_, name) => {
     if (!name?.endsWith(".excalidraw")) return;
     clearTimeout(pending.get(name));
-    pending.set(name, setTimeout(() => broadcast(name), CHANGE_DEBOUNCE_MS));
+    pending.set(name, setTimeout(() => broadcast(join(root, name)), CHANGE_DEBOUNCE_MS));
   });
 
   const server = createServer((request, response) => {
@@ -216,7 +236,7 @@ function createViewerServer(root) {
 
     if (url.pathname === "/api/files") {
       response.writeHead(200, { "Content-Type": MIME[".json"] });
-      return response.end(JSON.stringify({ files: listScenes(root) }));
+      return response.end(JSON.stringify({ files: listScenes(root).map((name) => join(root, name)) }));
     }
 
     if (url.pathname === "/api/settings") {
@@ -232,18 +252,26 @@ function createViewerServer(root) {
       return sendJson(response, 200, { recent: recentEntries(root) });
     }
 
+    if (url.pathname === "/api/recent/rename" && request.method === "POST") {
+      renameRecent(url.searchParams.get("path"), url.searchParams.get("title")?.trim());
+      return sendJson(response, 200, { recent: recentEntries(root) });
+    }
+
+    if (url.pathname === "/api/recent/remove" && request.method === "POST") {
+      removeRecent(url.searchParams.get("path"));
+      return sendJson(response, 200, { recent: recentEntries(root) });
+    }
+
     if (url.pathname === "/api/scene") {
-      const file = url.searchParams.get("file");
-      const path = isAbsolute(file) ? file : join(root, file);
-      const allowed = isAbsolute(file) ? readRecent().includes(path) : listScenes(root).includes(file);
-      if (!allowed) return response.writeHead(404).end();
+      const path = resolveScene(root, url.searchParams.get("file"));
+      if (!path) return response.writeHead(404).end();
       if (url.searchParams.has("recent")) recordRecent(path);
       return sendFile(response, path);
     }
 
     if (url.pathname === "/api/upload" && request.method === "POST") {
       saveUploadedScene(root, request, url.searchParams.get("name")).then(
-        (file) => sendJson(response, 201, { file }),
+        (file) => sendJson(response, 201, { file: join(root, file) }),
         (error) => sendJson(response, 400, { error: error.message }),
       );
       return;
@@ -269,7 +297,7 @@ function listen(server, port) {
       if (error.code !== "EADDRINUSE") return reject(error);
       listen(server, port + 1).then(resolvePort, reject);
     });
-    server.listen(port, "127.0.0.1", () => resolvePort(port));
+    server.listen(port, "127.0.0.1", () => resolvePort(server.address().port));
   });
 }
 
@@ -494,17 +522,18 @@ async function openViewer(target) {
     process.exit(1);
   }
 
+  const initialPath = join(root, initial);
   const running = await findRunningViewer(root);
   if (running) {
-    const url = `http://127.0.0.1:${running.port}/?file=${encodeURIComponent(initial)}`;
-    await fetch(`http://127.0.0.1:${running.port}/api/show?file=${encodeURIComponent(initial)}`, { method: "POST" });
+    const url = `http://127.0.0.1:${running.port}/?file=${encodeURIComponent(initialPath)}`;
+    await fetch(`http://127.0.0.1:${running.port}/api/show?file=${encodeURIComponent(initialPath)}`, { method: "POST" });
     if (running.viewers === 0) openBrowser(url);
     console.log(`excali: 이미 실행 중 ${url}`);
     return;
   }
 
   const port = await listen(createViewerServer(root), DEFAULT_PORT);
-  const url = `http://127.0.0.1:${port}/?file=${encodeURIComponent(initial)}`;
+  const url = `http://127.0.0.1:${port}/?file=${encodeURIComponent(initialPath)}`;
   console.log(`excali: ${url}  (종료: Ctrl+C)`);
   openBrowser(url);
 }

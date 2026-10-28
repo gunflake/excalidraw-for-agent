@@ -77,9 +77,21 @@ function saveSetting(key, value) {
   return fetch(`/api/settings?${key}=${encodeURIComponent(value)}`, { method: "POST" });
 }
 
-/** 서버에서 뷰어로 연 장면 목록을 읽는다. */
+/** 서버에서 파일 목록을 읽는다. 항목은 절대 경로를 id로 쓴다. */
 async function fetchRecent() {
   const response = await fetch("/api/recent");
+  return (await response.json()).recent;
+}
+
+/** 목록에 보일 이름을 바꾸고 바뀐 목록을 돌려받는다. */
+async function renameEntry(path, title) {
+  const response = await fetch(`/api/recent/rename?path=${encodeURIComponent(path)}&title=${encodeURIComponent(title)}`, { method: "POST" });
+  return (await response.json()).recent;
+}
+
+/** 목록에서 항목을 빼고 바뀐 목록을 돌려받는다. 파일은 지우지 않는다. */
+async function removeEntry(path) {
+  const response = await fetch(`/api/recent/remove?path=${encodeURIComponent(path)}`, { method: "POST" });
   return (await response.json()).recent;
 }
 
@@ -90,8 +102,13 @@ async function fetchScene(file, recordRecent = false) {
 }
 
 /** 파일 이름이나 절대 경로에서 확장자를 뺀 표시 이름을 만든다. */
-function sceneLabel(key) {
-  return key.split(/[\\/]/).pop().replace(/\.excalidraw$/, "");
+function sceneLabel(path) {
+  return path.split(/[\\/]/).pop().replace(/\.excalidraw$/, "");
+}
+
+/** 목록 항목의 표시 이름. 바꾼 이름이 있으면 그것을 쓴다. */
+function entryLabel(entry) {
+  return entry.title ?? sceneLabel(entry.path);
 }
 
 /** 드롭한 파일을 서버 폴더에 저장하고 저장된 파일 이름을 돌려준다. */
@@ -116,16 +133,65 @@ async function exportScene(scene) {
   });
 }
 
-function FileButton({ fileKey, folder, current, onSelect }) {
+/** 연필 모양 이름 바꾸기 아이콘. */
+function RenameIcon() {
   return (
-    <button
-      className={fileKey === current ? "active" : ""}
-      title={folder ? fileKey : undefined}
-      onClick={() => onSelect(fileKey)}
-    >
-      {sceneLabel(fileKey)}
-      {folder && <span className="folder">{folder}</span>}
-    </button>
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M11 2.5l2.5 2.5L6 12.5H3.5V10z" />
+    </svg>
+  );
+}
+
+/** X 모양 목록에서 빼기 아이콘. */
+function RemoveIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
+      <path d="M4 4l8 8M12 4l-8 8" />
+    </svg>
+  );
+}
+
+function FileItem({ entry, active, onSelect, onRename, onRemove }) {
+  const [editing, setEditing] = useState(false);
+
+  const finish = (event) => {
+    setEditing(false);
+    const title = event.target.value.trim();
+    if (title !== entryLabel(entry)) onRename(entry.path, title === sceneLabel(entry.path) ? "" : title);
+  };
+
+  if (editing) {
+    return (
+      <div className="file-item editing">
+        <input
+          autoFocus
+          defaultValue={entryLabel(entry)}
+          onFocus={(event) => event.target.select()}
+          onBlur={finish}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") event.target.blur();
+            if (event.key === "Escape") setEditing(false);
+          }}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className={active ? "file-item active" : "file-item"}>
+      <button className="file-open" title={entry.path} onClick={() => onSelect(entry.path)} onDoubleClick={() => setEditing(true)}>
+        {entryLabel(entry)}
+        {entry.folder && <span className="folder">{entry.folder}</span>}
+      </button>
+      <span className="file-actions">
+        <button title="이름 바꾸기 (목록에서만)" onClick={() => setEditing(true)}>
+          <RenameIcon />
+        </button>
+        <button title="목록에서 빼기 (파일은 그대로)" onClick={() => onRemove(entry.path)}>
+          <RemoveIcon />
+        </button>
+      </span>
+    </div>
   );
 }
 
@@ -139,8 +205,8 @@ function SidebarIcon({ expand }) {
   );
 }
 
-function FileList({ files, current, onSelect, collapsed, onToggle }) {
-  if (files.length < 2) return null;
+function FileList({ entries, current, onSelect, onRename, onRemove, collapsed, onToggle }) {
+  if (entries.length < 2) return null;
   const toggleLabel = collapsed ? "목록 펼치기" : "목록 접기";
   return (
     <aside className={collapsed ? "sidebar collapsed" : "sidebar"}>
@@ -158,8 +224,15 @@ function FileList({ files, current, onSelect, collapsed, onToggle }) {
           </button>
           <h2>파일 목록</h2>
         </header>
-        {files.slice(0, RECENT_SHOWN).map(({ key, folder }) => (
-          <FileButton key={key} fileKey={key} folder={folder} current={current} onSelect={onSelect} />
+        {entries.slice(0, RECENT_SHOWN).map((entry) => (
+          <FileItem
+            key={entry.path}
+            entry={entry}
+            active={entry.path === current}
+            onSelect={onSelect}
+            onRename={onRename}
+            onRemove={onRemove}
+          />
         ))}
       </nav>
     </aside>
@@ -183,10 +256,12 @@ function Viewer({ initialRecent, initialFile, initialFont, initialCollapsed }) {
   const [font, setFont] = useState(initialFont);
   const [recent, setRecent] = useState(initialRecent);
   const [collapsed, setCollapsed] = useState(initialCollapsed);
-  const [scene, setScene] = useState(null);
+  const [shown, setShown] = useState(null);
   const [dragging, setDragging] = useState(false);
   const [notice, setNotice] = useState(null);
   const apiRef = useRef(null);
+  const loadSeq = useRef(0);
+  const shownPath = useRef(null);
 
   const showNotice = useCallback((text) => {
     setNotice(text);
@@ -210,7 +285,7 @@ function Viewer({ initialRecent, initialFile, initialFont, initialCollapsed }) {
     for (const file of scenes) {
       try {
         opened = await uploadScene(file);
-        if (opened !== file.name) showNotice(`같은 이름이 있어 ${opened}로 저장했습니다.`);
+        if (sceneLabel(opened) !== sceneLabel(file.name)) showNotice(`같은 이름이 있어 ${sceneLabel(opened)}로 저장했습니다.`);
       } catch (error) {
         showNotice(`${file.name}: ${error.message}`);
       }
@@ -224,14 +299,18 @@ function Viewer({ initialRecent, initialFile, initialFont, initialCollapsed }) {
     api.scrollToContent(api.getSceneElements(), { fitToViewport: true, viewportZoomFactor: 0.9 });
   }, []);
 
-  const load = useCallback(async (file, keepView) => {
-    const nextScene = await fetchScene(file, !keepView);
+  const load = useCallback(async (path, keepView) => {
+    const seq = ++loadSeq.current;
+    const nextScene = await fetchScene(path, !keepView);
+    if (seq !== loadSeq.current) return;
     const elements = applyFont(nextScene.elements);
-    if (keepView && apiRef.current) {
+    if (keepView && apiRef.current && shownPath.current === path) {
       apiRef.current.updateScene({ elements });
       return;
     }
-    setScene({ ...nextScene, elements });
+    if (shownPath.current !== path) apiRef.current = null;
+    shownPath.current = path;
+    setShown({ path, scene: { ...nextScene, elements } });
   }, []);
 
   const changeFont = useCallback(async (fontId) => {
@@ -240,6 +319,16 @@ function Viewer({ initialRecent, initialFile, initialFont, initialCollapsed }) {
     setFont(fontId);
     await load(current, true);
   }, [current, load]);
+
+  const rename = useCallback(async (path, title) => {
+    setRecent(await renameEntry(path, title));
+  }, []);
+
+  const remove = useCallback(async (path) => {
+    const next = await removeEntry(path);
+    setRecent(next);
+    if (path === current && next.length > 0) setCurrent(next[0].path);
+  }, [current]);
 
   const toggleList = useCallback(() => {
     saveSetting("sidebar", collapsed ? "open" : "closed");
@@ -251,8 +340,12 @@ function Viewer({ initialRecent, initialFile, initialFont, initialCollapsed }) {
     const url = new URL(window.location.href);
     url.searchParams.set("file", current);
     window.history.replaceState(null, "", url);
-    document.title = `${sceneLabel(current)} · excali`;
   }, [current, load]);
+
+  useEffect(() => {
+    const entry = recent.find(({ path }) => path === current);
+    document.title = `${entry ? entryLabel(entry) : sceneLabel(current)} · excali`;
+  }, [current, recent]);
 
   useEffect(() => {
     const events = new EventSource("/events");
@@ -277,17 +370,25 @@ function Viewer({ initialRecent, initialFile, initialFont, initialCollapsed }) {
         </div>
       )}
       {notice && <div className="notice">{notice}</div>}
-      <FileList files={recent} current={current} onSelect={setCurrent} collapsed={collapsed} onToggle={toggleList} />
+      <FileList
+        entries={recent}
+        current={current}
+        onSelect={setCurrent}
+        onRename={rename}
+        onRemove={remove}
+        collapsed={collapsed}
+        onToggle={toggleList}
+      />
       <main>
         <FontPicker value={font} onChange={changeFont} />
-        {scene && (
+        {shown && (
           <Excalidraw
-            key={current}
+            key={shown.path}
             excalidrawAPI={(api) => {
               apiRef.current = api;
               setTimeout(fitToScreen, 50);
             }}
-            initialData={{ elements: scene.elements, appState: { ...scene.appState, viewModeEnabled: true, zenModeEnabled: true }, files: scene.files }}
+            initialData={{ elements: shown.scene.elements, appState: { ...shown.scene.appState, viewModeEnabled: true, zenModeEnabled: true }, files: shown.scene.files }}
             viewModeEnabled
             zenModeEnabled
             UIOptions={{ canvasActions: { export: false, loadScene: false, saveToActiveFile: false, toggleTheme: false, changeViewBackgroundColor: false, clearCanvas: false, saveAsImage: false } }}
@@ -306,7 +407,7 @@ async function main() {
 
   const [files, recent, settings] = await Promise.all([fetchFiles(), fetchRecent(), fetchSettings()]);
   const requested = new URLSearchParams(window.location.search).get("file");
-  const openable = [...files, ...recent.map(({ key }) => key)];
+  const openable = [...files, ...recent.map(({ path }) => path)];
   const initialFile = openable.includes(requested) ? requested : files[0];
   const initialFont = fontChoice(settings.font);
   await registerSlotFont(initialFont);
