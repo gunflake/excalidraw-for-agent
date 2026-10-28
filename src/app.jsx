@@ -81,7 +81,7 @@ async function fetchScene(file, recordRecent = false) {
 
 /** 파일 이름이나 절대 경로에서 확장자를 뺀 표시 이름을 만든다. */
 function sceneLabel(key) {
-  return key.split("/").pop().replace(/\.excalidraw$/, "");
+  return key.split(/[\\/]/).pop().replace(/\.excalidraw$/, "");
 }
 
 /** 드롭한 파일을 서버 폴더에 저장하고 저장된 파일 이름을 돌려준다. */
@@ -110,7 +110,7 @@ function FileButton({ fileKey, folder, current, onSelect }) {
   return (
     <button
       className={fileKey === current ? "active" : ""}
-      title={folder ? `${folder}/${sceneLabel(fileKey)}.excalidraw` : undefined}
+      title={folder ? fileKey : undefined}
       onClick={() => onSelect(fileKey)}
     >
       {sceneLabel(fileKey)}
@@ -128,7 +128,7 @@ function FileList({ files, recent, current, onSelect }) {
         <FileButton
           key={key}
           fileKey={key}
-          folder={key.startsWith("/") ? folder : null}
+          folder={folder}
           current={current}
           onSelect={onSelect}
         />

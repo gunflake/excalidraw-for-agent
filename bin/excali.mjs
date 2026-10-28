@@ -3,8 +3,8 @@ import { createServer } from "node:http";
 import { execFile, execFileSync, spawn } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, watch, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { basename, dirname, extname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { basename, dirname, extname, isAbsolute, join, resolve } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const APP_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const STATIC_ROUTES = {
@@ -33,6 +33,7 @@ const CHANGE_DEBOUNCE_MS = 150;
 const UPLOAD_LIMIT_BYTES = 20 * 1024 * 1024;
 const RECENT_PATH = join(homedir(), ".excali", "recent.json");
 const RECENT_LIMIT = 20;
+const IS_WINDOWS = process.platform === "win32";
 const USAGE = `사용법:
   excali [-d] [파일.excalidraw | 폴더]     뷰어로 보기 (기본: 현재 폴더, -d는 백그라운드 실행)
   excali png <파일.excalidraw> [출력.png]  뷰어와 같은 폰트로 PNG 만들기
@@ -63,11 +64,14 @@ function recordRecent(path) {
 
 /** 최근 목록을 화면용 항목으로 바꾼다. 이 폴더 파일은 이름으로, 다른 폴더 파일은 절대 경로로 연다. */
 function recentEntries(root) {
-  return readRecent().map((path) => ({
-    key: dirname(path) === root ? basename(path) : path,
-    name: basename(path),
-    folder: dirname(path).replace(homedir(), "~"),
-  }));
+  return readRecent().map((path) => {
+    const external = dirname(path) !== root;
+    return {
+      key: external ? path : basename(path),
+      name: basename(path),
+      folder: external ? dirname(path).replace(homedir(), "~") : null,
+    };
+  });
 }
 
 /** 파일 또는 폴더 인자를 (폴더, 처음 열 파일) 쌍으로 바꾼다. */
@@ -188,8 +192,8 @@ function createViewerServer(root) {
 
     if (url.pathname === "/api/scene") {
       const file = url.searchParams.get("file");
-      const path = file.startsWith("/") ? file : join(root, file);
-      const allowed = file.startsWith("/") ? readRecent().includes(path) : listScenes(root).includes(file);
+      const path = isAbsolute(file) ? file : join(root, file);
+      const allowed = isAbsolute(file) ? readRecent().includes(path) : listScenes(root).includes(file);
       if (!allowed) return response.writeHead(404).end();
       if (url.searchParams.has("recent")) recordRecent(path);
       return sendFile(response, path);
@@ -227,21 +231,49 @@ function listen(server, port) {
   });
 }
 
+/** 운영체제별로 Playwright가 브라우저를 내려받는 폴더를 돌려준다. */
+function playwrightCacheDir() {
+  if (process.env.PLAYWRIGHT_BROWSERS_PATH) return process.env.PLAYWRIGHT_BROWSERS_PATH;
+  if (IS_WINDOWS) return join(process.env.LOCALAPPDATA ?? join(homedir(), "AppData/Local"), "ms-playwright");
+  if (process.platform === "darwin") return join(homedir(), "Library/Caches/ms-playwright");
+  return join(homedir(), ".cache/ms-playwright");
+}
+
+/** 운영체제별로 이미 깔려 있을 만한 Chrome·Edge·Chromium 경로를 돌려준다. */
+function installedBrowserPaths() {
+  if (IS_WINDOWS) {
+    const roots = [process.env.PROGRAMFILES, process.env["PROGRAMFILES(X86)"], process.env.LOCALAPPDATA].filter(Boolean);
+    return roots.flatMap((root) => [
+      join(root, "Google/Chrome/Application/chrome.exe"),
+      join(root, "Microsoft/Edge/Application/msedge.exe"),
+    ]);
+  }
+  if (process.platform === "darwin") {
+    return [
+      "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+      "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+      "/Applications/Chromium.app/Contents/MacOS/Chromium",
+    ];
+  }
+  return ["/usr/bin/google-chrome", "/usr/bin/chromium", "/usr/bin/chromium-browser", "/usr/bin/microsoft-edge"];
+}
+
 /** 설치된 Chromium 계열 브라우저 실행 파일을 찾는다. */
 function findChromium() {
-  const cache = join(homedir(), "Library/Caches/ms-playwright");
+  const cache = playwrightCacheDir();
+  const shellName = IS_WINDOWS ? "chrome-headless-shell.exe" : "chrome-headless-shell";
   const shells = existsSync(cache)
     ? readdirSync(cache).filter((name) => name.startsWith("chromium_headless_shell-")).sort().reverse()
     : [];
   for (const shell of shells) {
     for (const platform of readdirSync(join(cache, shell))) {
-      const executable = join(cache, shell, platform, "chrome-headless-shell");
+      const executable = join(cache, shell, platform, shellName);
       if (existsSync(executable)) return executable;
     }
   }
-  const chrome = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
-  if (existsSync(chrome)) return chrome;
-  throw new Error("Chromium을 찾지 못했습니다. Google Chrome을 설치하거나 `npx playwright install chromium`을 실행하세요.");
+  const installed = installedBrowserPaths().find((path) => existsSync(path));
+  if (installed) return installed;
+  throw new Error("Chromium을 찾지 못했습니다. Chrome이나 Edge를 설치하거나 `npx playwright install chromium`을 실행하세요.");
 }
 
 /** 뷰어와 같은 폰트 설정으로 장면을 PNG 파일로 렌더링한다. */
@@ -285,14 +317,17 @@ async function findRunningViewer(root) {
   return null;
 }
 
+/** 기본 브라우저로 주소를 연다. EXCALI_NO_OPEN이 있으면 열지 않는다. */
 function openBrowser(url) {
-  if (!process.env.EXCALI_NO_OPEN) execFile("open", [url]);
+  if (process.env.EXCALI_NO_OPEN) return;
+  if (IS_WINDOWS) execFile("cmd", ["/c", "start", "", url], { windowsHide: true });
+  else execFile(process.platform === "darwin" ? "open" : "xdg-open", [url]);
 }
 
 /** 뷰어를 분리된 백그라운드 프로세스로 띄우고 준비될 때까지 기다린다. */
 async function openViewerInBackground(target) {
   const { root } = resolveTarget(target);
-  const child = spawn(process.execPath, [fileURLToPath(import.meta.url), target], { detached: true, stdio: "ignore" });
+  const child = spawn(process.execPath, [fileURLToPath(import.meta.url), target], { detached: true, stdio: "ignore", windowsHide: true });
   child.unref();
   for (let attempt = 0; attempt < 30; attempt += 1) {
     await new Promise((done) => setTimeout(done, 100));
@@ -330,7 +365,8 @@ function createScript(name) {
     process.exit(1);
   }
   mkdirSync(dirname(script), { recursive: true });
-  writeFileSync(script, `import { Scene } from ${JSON.stringify(SCENE_LIB)};
+  writeFileSync(script, `import { fileURLToPath } from "node:url";
+import { Scene } from ${JSON.stringify(pathToFileURL(SCENE_LIB).href)};
 
 const scene = new Scene();
 scene.text({ x: 60, y: 20, text: "제목", size: 30 });
@@ -339,7 +375,7 @@ const first = scene.box({ cx: 200, cy: 200, label: "첫 단계", color: "blue" }
 const second = scene.box({ cx: 560, cy: 200, label: "다음 단계", color: "green" });
 scene.arrow(first, second, { label: "요청" });
 
-scene.save(new URL("../${name}.excalidraw", import.meta.url).pathname);
+scene.save(fileURLToPath(new URL("../${name}.excalidraw", import.meta.url)));
 `);
   console.log(script);
 }

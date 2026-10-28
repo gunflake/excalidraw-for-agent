@@ -7,7 +7,7 @@ description: 구조, 흐름, 순서, 관계를 손그림 느낌의 Excalidraw �
 
 에이전트가 그리고, 사람은 확인한다. 그림은 JS 스크립트(`~/diagrams/src/<이름>.mjs`)로 만들고, `excali build`로 `.excalidraw`와 `.png`를 만든 뒤, PNG를 직접 보고 고친다. 다 되면 PNG를 대화창에 보내고 뷰어를 연다.
 
-`excali`가 없으면(`command -v excali` 실패) https://github.com/gunflake/excalidraw-for-agent 를 clone 해서 `./install.sh`를 실행하라고 안내하고 멈춘다.
+`excali`가 없으면(`command -v excali` 실패) https://github.com/gunflake/excalidraw-for-agent 를 clone 해서 `./install.sh`(Windows는 `install.ps1`)를 실행하라고 안내하고 멈춘다.
 
 ## 작업 순서
 
@@ -92,4 +92,4 @@ scene.sequence({
 - `excali png <파일.excalidraw> [출력.png]`: 이미 있는 .excalidraw를 PNG로 만든다.
 - `excali ~/diagrams`: 그림 폴더 전체를 뷰어로 연다. 파일이 2개 이상이면 왼쪽에 목록이 나온다.
 - `excali stop`: 백그라운드 뷰어를 모두 끈다.
-- 예시 스크립트: 이 스킬이 있는 저장소의 `examples/kafka-rebalance.mjs`(시퀀스), `examples/order-flow.mjs`(흐름도와 group).
+- 예시 스크립트: 이 스킬이 있는 저장소의 `examples/kafka-rebalance.mjs`(시퀀스), `examples/order-flow.mjs`(흐름도와 group), `examples/web-architecture.mjs`(구조도), `examples/order-state.mjs`(상태 전이도, ellipse), `examples/deploy-pipeline.mjs`(판단이 두 번 있는 파이프라인).

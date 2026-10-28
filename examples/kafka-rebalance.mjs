@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import { Scene } from "../lib/scene.mjs";
 
 const scene = new Scene();
@@ -18,4 +19,4 @@ scene.sequence({
     { note: "⑥ 100~149 다시 처리\n⚠ 중복!", over: [2, 2], color: "red" },
   ],
 });
-console.log(scene.save(new URL("./out/kafka-rebalance.excalidraw", import.meta.url).pathname));
+console.log(scene.save(fileURLToPath(new URL("./out/kafka-rebalance.excalidraw", import.meta.url))));

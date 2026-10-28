@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import { Scene } from "../lib/scene.mjs";
 
 const scene = new Scene();
@@ -18,4 +19,4 @@ scene.arrow(payment, db, { label: "승인 결과 저장", fromSide: "top", toSid
 scene.arrow(api, db, { label: "주문 생성", dashed: true });
 scene.group([api, check, payment, db], { label: "백엔드" });
 
-console.log(scene.save(new URL("./out/order-flow.excalidraw", import.meta.url).pathname));
+console.log(scene.save(fileURLToPath(new URL("./out/order-flow.excalidraw", import.meta.url))));

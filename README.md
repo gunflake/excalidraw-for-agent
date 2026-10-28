@@ -7,7 +7,7 @@ AI 에이전트(Claude Code, Codex 등)가 **Excalidraw로 다이어그램을 �
 
 Mermaid보다 보기 좋고, 손으로 그린 느낌의 그림을 에이전트에게 맡기는 것이 목적입니다.
 
-![주문 결제 흐름 예시](docs/order-flow.png)
+![웹 서비스 구조도 예시](docs/web-architecture.png)
 
 ## 구성
 
@@ -22,6 +22,8 @@ PNG에서 한글은 나눔손글씨 펜으로 보입니다. Excalidraw 기본 �
 
 ## 설치
 
+macOS가 기본이고, Windows(PowerShell)와 Linux에서도 씁니다. Node.js 20 이상이 필요합니다.
+
 ### 에이전트에게 맡기기 (추천)
 
 Claude Code나 Codex 같은 에이전트에게 아래 문장을 그대로 붙여 넣으세요. 설치, 스킬 연결, 확인용 그림까지 에이전트가 끝냅니다.
@@ -31,11 +33,11 @@ https://github.com/gunflake/excalidraw-for-agent 를 설치해줘.
 README의 "에이전트용 설치 절차"를 순서대로 따르고, 끝나면 확인용 그림을 하나 그려서 보여줘.
 ```
 
-설치가 끝나면 새 세션에서 "이 흐름 그림으로 그려줘"처럼 말하면 됩니다.
+설치 중에 에이전트가 스킬도 설치할지 묻습니다. 설치가 끝나면 새 세션에서 "이 흐름 그림으로 그려줘"처럼 말하면 됩니다.
 
 ### 에이전트용 설치 절차
 
-> 이 절은 설치를 맡은 에이전트를 위한 것입니다. 위에서부터 순서대로 실행하고, 실패한 단계는 원인을 고친 뒤 다시 실행하세요. 이미 설치되어 있으면 1단계에서 최신으로 받고 나머지를 그대로 다시 실행해도 안전합니다.
+> 이 절은 설치를 맡은 에이전트를 위한 것입니다. 위에서부터 순서대로 실행하고, 실패한 단계는 원인을 고친 뒤 다시 실행하세요. 이미 설치되어 있으면 2단계에서 최신으로 받고 나머지를 그대로 다시 실행해도 안전합니다. Windows에서는 각 단계의 PowerShell 명령을 씁니다.
 
 1. **준비 확인.** `node --version`이 20 이상이어야 합니다. 아니면 사용자에게 Node.js 20 이상 설치를 요청하고 멈춥니다.
 2. **내려받기.** `~/Projects/excalidraw-for-agent`가 없으면 clone하고, 있으면 최신으로 받습니다.
@@ -45,16 +47,22 @@ README의 "에이전트용 설치 절차"를 순서대로 따르고, 끝나면 �
    ```bash
    git -C ~/Projects/excalidraw-for-agent pull --ff-only
    ```
-3. **스킬 폴더 만들기.** `install.sh`는 이미 있는 스킬 폴더에만 스킬을 연결합니다. 지금 실행 중인 에이전트의 스킬 폴더를 먼저 만듭니다. Claude Code는 `~/.claude/skills`, Codex는 `~/.codex/skills`입니다.
+   Windows PowerShell은 git 같은 외부 명령에 넘기는 `~`를 펼치지 않으므로, 이 문서의 `~/...` 경로를 모두 `"$HOME\..."`로 바꿔 씁니다(예: `"$HOME\Projects\excalidraw-for-agent"`).
+3. **스킬 설치 여부 묻기.** 사용자에게 아래 문장을 그대로 묻고, 답에 따라 다음 단계의 옵션을 고릅니다. 설치 스크립트를 에이전트가 실행하면 입력을 받을 수 없어 스스로 묻지 못하므로, 에이전트가 대신 묻습니다.
+   > 스킬도 설치할까요? 스킬을 설치하면 다이어그램이나 플로차트를 요청할 때 에이전트가 이 스킬을 참고해 그립니다.
+
+   예 → `--skill`(Windows는 `-Skill`), 아니오 → `--no-skill`(Windows는 `-NoSkill`)
+4. **설치.** 의존성 설치, 뷰어 빌드, `excali` 명령 연결, (예라고 했으면) 스킬 연결을 한 번에 합니다.
    ```bash
-   mkdir -p ~/.claude/skills
+   ~/Projects/excalidraw-for-agent/install.sh --skill
    ```
-4. **설치.** 의존성 설치, 뷰어 빌드, `excali` 명령 연결, 스킬 연결을 한 번에 합니다.
-   ```bash
-   ~/Projects/excalidraw-for-agent/install.sh
+   Windows:
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File "$HOME\Projects\excalidraw-for-agent\install.ps1" -Skill
    ```
-5. **PATH 확인.** 출력에 "PATH에 없습니다"가 나왔으면 사용자의 셸 설정(`~/.zshrc` 또는 `~/.bashrc`)에 `export PATH="$HOME/.local/bin:$PATH"`를 추가해도 되는지 묻고, 허락받으면 추가합니다. 이번 세션에서는 `~/.local/bin/excali`처럼 전체 경로로 실행합니다.
-6. **PNG용 브라우저 확인.** Google Chrome이 없으면 아래 명령으로 Chromium을 받습니다. 약 100MB를 내려받으므로 사용자에게 먼저 알립니다.
+   스킬은 `~/.claude/skills`, `~/.codex/skills` 중 에이전트 폴더(`~/.claude`, `~/.codex`)가 있는 곳에 연결됩니다.
+5. **PATH 확인.** 출력에 "PATH에 없습니다"가 나왔으면 사용자의 셸 설정(`~/.zshrc` 또는 `~/.bashrc`)에 `export PATH="$HOME/.local/bin:$PATH"`를 추가해도 되는지 묻고, 허락받으면 추가합니다. 이번 세션에서는 `~/.local/bin/excali`처럼 전체 경로로 실행합니다. Windows는 `npm link`가 npm 전역 폴더(`npm prefix -g`)에 `excali`를 만들며, 보통 이미 PATH에 있습니다.
+6. **PNG용 브라우저 확인.** Google Chrome이나 Microsoft Edge가 있으면 그대로 씁니다(Windows는 Edge가 기본으로 깔려 있습니다). 둘 다 없으면 아래 명령으로 Chromium을 받습니다. 약 100MB를 내려받으므로 사용자에게 먼저 알립니다.
    ```bash
    cd ~/Projects/excalidraw-for-agent && npx playwright install chromium
    ```
@@ -62,12 +70,14 @@ README의 "에이전트용 설치 절차"를 순서대로 따르고, 끝나면 �
    ```bash
    excali new install-check && excali build install-check
    ```
-   `~/diagrams/install-check.png`가 생기면 그 PNG를 사용자에게 보여 주고 `excali -d ~/diagrams/install-check.excalidraw`로 뷰어를 엽니다.
-8. **보고.** 연결된 스킬 경로(`ls -l ~/.claude/skills/excalidraw-diagram` 등)와 확인용 PNG 경로를 알려 줍니다. 스킬은 새 세션부터 확실히 잡히니, 새 세션에서 그림을 요청하라고 안내합니다.
+   Windows PowerShell 5.1은 `&&`를 모르므로 두 명령을 따로 실행합니다. `~/diagrams/install-check.png`가 생기면 그 PNG를 사용자에게 보여 주고 `excali -d ~/diagrams/install-check.excalidraw`로 뷰어를 엽니다.
+8. **보고.** 확인용 PNG 경로를 알려 줍니다. 스킬을 설치했으면 연결된 스킬 경로(`ls -l ~/.claude/skills/excalidraw-diagram` 등)도 알려 주고, 스킬은 새 세션부터 확실히 잡히니 새 세션에서 그림을 요청하라고 안내합니다.
 
 ### 직접 설치
 
-설치 프로그램이 아니라 **내려받아 실행하는 방식**입니다. Node.js 20 이상만 있으면 됩니다.
+설치 프로그램이 아니라 **내려받아 실행하는 방식**입니다.
+
+macOS / Linux:
 
 ```bash
 git clone https://github.com/gunflake/excalidraw-for-agent.git ~/Projects/excalidraw-for-agent
@@ -77,15 +87,29 @@ git clone https://github.com/gunflake/excalidraw-for-agent.git ~/Projects/excali
 ~/Projects/excalidraw-for-agent/install.sh
 ```
 
-`install.sh`가 하는 일:
+Windows (PowerShell):
+
+```powershell
+git clone https://github.com/gunflake/excalidraw-for-agent.git "$HOME\Projects\excalidraw-for-agent"
+```
+
+```powershell
+powershell -ExecutionPolicy Bypass -File "$HOME\Projects\excalidraw-for-agent\install.ps1"
+```
+
+옵션 없이 실행하면 "스킬도 설치할까요?"라고 묻습니다. 묻지 않게 하려면 `--skill`/`--no-skill`(Windows는 `-Skill`/`-NoSkill`)을 붙이세요.
+
+설치 스크립트가 하는 일:
 
 1. `npm install`과 뷰어 빌드
-2. `~/.local/bin/excali` 에 명령 연결 (`EXCALI_BIN_DIR`로 바꿀 수 있습니다)
-3. `~/.claude/skills`, `~/.codex/skills` 중 있는 곳에 `excalidraw-diagram` 스킬 연결
+2. `excali` 명령 연결
+   - macOS / Linux: `~/.local/bin/excali` 링크 (`EXCALI_BIN_DIR`로 바꿀 수 있습니다)
+   - Windows: `npm link`로 npm 전역 폴더에 연결
+3. 스킬 설치를 골랐으면 `~/.claude/skills`, `~/.codex/skills` 중 에이전트 폴더가 있는 곳에 `excalidraw-diagram` 스킬 연결 (Windows는 디렉터리 정션)
 
-PNG 출력에는 Chromium이 필요합니다. Google Chrome이 깔려 있으면 그대로 씁니다. 없으면 `npx playwright install chromium`을 실행하세요.
+PNG 출력에는 Chromium 계열 브라우저가 필요합니다. Google Chrome이나 Microsoft Edge가 깔려 있으면 그대로 씁니다. 없으면 `npx playwright install chromium`을 실행하세요.
 
-지우려면 위의 두 링크와 저장소 폴더를 삭제하면 됩니다.
+지우려면 `excali` 링크(Windows는 저장소 폴더에서 `npm unlink -g`), 스킬 링크, 저장소 폴더를 삭제하면 됩니다.
 
 ## 사용법
 
@@ -128,7 +152,37 @@ excali ~/diagrams
 
 뷰어는 기본으로 강원교육모두 Bold로 글자를 보여 줍니다. 오른쪽 위 메뉴에서 Slant Sans나 Gowun Dodum(고운돋움)으로 바꿀 수 있고, 고른 글꼴은 브라우저에 기억됩니다. 뷰어 화면에만 적용되고, `.excalidraw` 파일과 `excali png`·`excali build`로 만든 PNG는 손글씨 그대로입니다.
 
+| 강원교육모두 Bold (기본) |
+|---|
+| ![강원교육모두 Bold](docs/font-gangwon-bold.png) |
+| **Slant Sans** |
+| ![Slant Sans](docs/font-slant-sans.png) |
+| **Gowun Dodum (고운돋움)** |
+| ![Gowun Dodum](docs/font-gowun-dodum.png) |
+
 뷰어는 보기 전용입니다. 고치고 싶으면 에이전트에게 말하거나, `.excalidraw` 파일을 [excalidraw.com](https://excalidraw.com)에 끌어다 놓고 편집하세요.
+
+## 활용 예시
+
+[examples/](examples/)의 스크립트로 만든 그림입니다. `npm run example`로 `examples/out/`에 다시 만들 수 있습니다.
+
+| 흐름도 (분기·묶음) | 시퀀스 다이어그램 |
+|---|---|
+| ![주문 결제 흐름](docs/order-flow.png) | ![Kafka 리밸런싱 중복 처리](docs/kafka-rebalance.png) |
+| [`order-flow.mjs`](examples/order-flow.mjs) | [`kafka-rebalance.mjs`](examples/kafka-rebalance.mjs) |
+| **구조도 (서버·저장소)** | **상태 전이도** |
+| ![웹 서비스 구조도](docs/web-architecture.png) | ![주문 상태 전이도](docs/order-state.png) |
+| [`web-architecture.mjs`](examples/web-architecture.mjs) | [`order-state.mjs`](examples/order-state.mjs) |
+| **파이프라인 (판단·되돌림)** | |
+| ![CI/CD 배포 파이프라인](docs/deploy-pipeline.png) | |
+| [`deploy-pipeline.mjs`](examples/deploy-pipeline.mjs) | |
+
+에이전트에게는 이렇게 말하면 됩니다.
+
+- "회원가입 흐름을 플로차트로 그려줘" → 흐름도
+- "로그인 과정에서 브라우저·서버·DB가 주고받는 걸 시퀀스 다이어그램으로" → 시퀀스
+- "우리 서비스 서버 구성을 구조도로 그려줘" → 구조도
+- "주문 상태가 어떻게 바뀌는지 그림으로" → 상태 전이도
 
 ## Scene API
 
@@ -161,7 +215,7 @@ scene.save("/path/to/order-flow.excalidraw");
 
 색: `blue` `green` `yellow` `orange` `purple` `gray` `red` `white` `none`
 
-전체 예시는 [examples/](examples/)에 있습니다. `npm run example`로 `examples/out/`에 만들어 볼 수 있습니다.
+전체 예시는 위의 [활용 예시](#활용-예시)와 [examples/](examples/)에 있습니다.
 
 ## 동작 방식
 
