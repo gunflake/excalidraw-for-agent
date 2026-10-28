@@ -5,9 +5,7 @@ REPO="gunflake/excalidraw-for-agent"
 DOWNLOAD_BASE="${EXCALI_DOWNLOAD_BASE:-https://github.com/$REPO/releases/latest/download}"
 INSTALL_DIR="${EXCALI_INSTALL_DIR:-$HOME/.excali/app}"
 BIN_DIR="${EXCALI_BIN_DIR:-$HOME/.local/bin}"
-AGENT_HOMES=("$HOME/.claude" "$HOME/.codex")
 SKILL_NAME="excalidraw-diagram"
-SKILL_PROMPT="스킬도 설치할까요? 스킬을 설치하면 다이어그램이나 플로차트를 요청할 때 에이전트가 이 스킬을 참고해 그립니다."
 SCRIPT_DIR=""
 if [ -n "${BASH_SOURCE[0]:-}" ] && [ -f "${BASH_SOURCE[0]}" ]; then
   SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -15,34 +13,80 @@ fi
 
 usage() {
   cat <<EOF
-사용법: install.sh [--skill | --no-skill]
-  --skill     묻지 않고 에이전트 스킬까지 설치
-  --no-skill  스킬 없이 excali 명령만 설치
-옵션이 없으면 스킬 설치 여부를 묻습니다.
+사용법: install.sh [--skill global | --skill project [--project-dir <폴더>] | --no-skill]
+  --skill global         모든 프로젝트에서 쓰도록 스킬 연결 (~/.claude/skills, ~/.agents/skills)
+  --skill project        한 프로젝트에서만 쓰도록 스킬 복사 (<폴더>/.claude/skills, <폴더>/.agents/skills)
+  --project-dir <폴더>   --skill project의 대상 폴더 (기본: 현재 폴더)
+  --no-skill             스킬 없이 excali 명령만 설치
+옵션이 없으면 스킬을 어디에 설치할지 묻고, 물을 수 없으면 모든 프로젝트용으로 설치합니다.
+스킬은 ~/.claude가 있으면 Claude Code용, ~/.codex가 있으면 Codex용으로 넣습니다.
 
 Node.js가 들어 있는 배포본을 받아 $INSTALL_DIR 에 설치합니다.
 저장소를 clone한 폴더에서 실행하면 그 소스를 빌드해 연결합니다 (Node.js 20 이상 필요).
 EOF
 }
 
-skill_choice=""
-for arg in "$@"; do
-  case "$arg" in
-    --skill) skill_choice="yes" ;;
-    --no-skill) skill_choice="no" ;;
+skill_scope=""
+project_dir="$PWD"
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --skill)
+      case "${2:-}" in
+        global | project) skill_scope="$2"; shift ;;
+        *) skill_scope="global" ;;
+      esac
+      ;;
+    --project-dir) project_dir="${2:?--project-dir 뒤에 폴더를 적으세요}"; shift ;;
+    --no-skill) skill_scope="none" ;;
     -h | --help) usage; exit 0 ;;
     *) usage; exit 1 ;;
   esac
+  shift
 done
 
-if [ -z "$skill_choice" ]; then
+ask_skill_scope() {
+  local choice dir
+  printf '\nexcali 스킬을 어디에 설치할까요? 스킬이 있으면 다이어그램을 요청할 때 에이전트가 이 스킬을 참고해 그립니다.\n' >/dev/tty
+  printf '  1) 모든 프로젝트에서 쓰기 (추천)\n  2) 특정 프로젝트 폴더에서만 쓰기\n  3) 설치하지 않기\n' >/dev/tty
+  read -r -p "번호 [1]: " choice </dev/tty
+  case "${choice:-1}" in
+    2)
+      read -r -p "프로젝트 폴더 [$PWD]: " dir </dev/tty
+      skill_scope="project"
+      project_dir="${dir:-$PWD}"
+      ;;
+    3) confirm_no_skill ;;
+    *) skill_scope="global" ;;
+  esac
+}
+
+confirm_no_skill() {
+  local choice
+  printf '\n스킬이 없으면 에이전트가 excali 쓰는 법을 모릅니다. 그림을 부탁할 때마다 사용법 문서를 읽으라고 직접 알려 줘야 하고,\n' >/dev/tty
+  printf '"그림으로 설명해줘"라고만 하면 excali 대신 Mermaid나 글로 답합니다. 그래도 설치하지 않을까요?\n' >/dev/tty
+  printf '  1) 모든 프로젝트에서 쓰기 (추천)\n  2) 그래도 설치하지 않기\n' >/dev/tty
+  read -r -p "번호 [1]: " choice </dev/tty
+  case "${choice:-1}" in
+    2) skill_scope="none" ;;
+    *) skill_scope="global" ;;
+  esac
+}
+
+if [ -z "$skill_scope" ]; then
   if { : </dev/tty; } 2>/dev/null; then
-    read -r -p "$SKILL_PROMPT [Y/n] " answer </dev/tty
-    case "$answer" in [nN]*) skill_choice="no" ;; *) skill_choice="yes" ;; esac
+    ask_skill_scope
   else
-    echo "입력을 받을 수 없어 스킬은 건너뜁니다. 스킬까지 설치하려면 --skill 을 붙여 다시 실행하세요."
-    skill_choice="no"
+    echo "입력을 받을 수 없어 스킬을 모든 프로젝트용으로 설치합니다. 원하지 않으면 --no-skill 을 붙여 다시 실행하세요."
+    skill_scope="global"
   fi
+fi
+if [ "$skill_scope" = "project" ]; then
+  project_dir="${project_dir/#\~/$HOME}"
+  if [ ! -d "$project_dir" ]; then
+    echo "프로젝트 폴더가 없습니다: $project_dir" >&2
+    exit 1
+  fi
+  project_dir="$(cd "$project_dir" && pwd)"
 fi
 
 release_target() {
@@ -100,17 +144,43 @@ install_source() {
   ln -sfn "$APP_DIR/bin/excali.mjs" "$BIN_DIR/excali"
 }
 
-link_skill() {
-  local linked=0 agent_home
-  echo "==> 에이전트 스킬 연결"
-  for agent_home in "${AGENT_HOMES[@]}"; do
-    [ -d "$agent_home" ] || continue
-    mkdir -p "$agent_home/skills"
-    ln -sfn "$APP_DIR/skill/$SKILL_NAME" "$agent_home/skills/$SKILL_NAME"
-    linked=$((linked + 1))
-    echo "    $agent_home/skills/$SKILL_NAME"
-  done
-  [ "$linked" -gt 0 ] || echo "    ~/.claude 나 ~/.codex 가 없어 건너뜁니다. 에이전트를 먼저 설치한 뒤 --skill 로 다시 실행하세요."
+skill_dirs() {
+  local base="$1"
+  if [ -d "$HOME/.claude" ]; then echo "$base/.claude/skills"; fi
+  if [ -d "$HOME/.codex" ]; then echo "$base/.agents/skills"; fi
+}
+
+install_skill() {
+  local source="$APP_DIR/skill/$SKILL_NAME" base dirs dir target
+  if [ "$skill_scope" = "global" ]; then
+    echo "==> 에이전트 스킬 연결 (모든 프로젝트)"
+    base="$HOME"
+    if [ -L "$HOME/.codex/skills/$SKILL_NAME" ]; then unlink "$HOME/.codex/skills/$SKILL_NAME"; fi
+  else
+    echo "==> 에이전트 스킬 복사 (프로젝트: $project_dir)"
+    base="$project_dir"
+  fi
+  dirs="$(skill_dirs "$base")"
+  if [ -z "$dirs" ]; then
+    echo "    ~/.claude 나 ~/.codex 가 없어 건너뜁니다. 에이전트를 먼저 설치한 뒤 다시 실행하세요."
+    return
+  fi
+  while IFS= read -r dir; do
+    target="$dir/$SKILL_NAME"
+    mkdir -p "$dir"
+    if [ "$skill_scope" = "global" ]; then
+      if [ -e "$target" ] && [ ! -L "$target" ]; then
+        echo "$target 에 링크가 아닌 폴더가 있습니다. 직접 지운 뒤 다시 실행하세요." >&2
+        exit 1
+      fi
+      ln -sfn "$source" "$target"
+    else
+      if [ -L "$target" ]; then unlink "$target"; fi
+      mkdir -p "$target"
+      cp -R "$source/." "$target/"
+    fi
+    echo "    $target"
+  done <<<"$dirs"
 }
 
 add_to_path() {
@@ -137,10 +207,15 @@ echo "==> excali 명령 연결: $BIN_DIR/excali"
 echo "==> 실행 중인 뷰어 끄기 (새 화면과 맞지 않는 예전 서버가 남지 않게)"
 "$NODE_BIN" "$APP_DIR/bin/excali.mjs" stop
 
-if [ "$skill_choice" = "yes" ]; then link_skill; fi
+if [ "$skill_scope" != "none" ]; then install_skill; fi
 
 echo "==> PNG용 브라우저 확인"
 "$NODE_BIN" "$APP_DIR/bin/excali.mjs" setup-browser
 
 add_to_path
+if [ "$skill_scope" = "none" ]; then
+  echo "    스킬 없이 설치했습니다. 그림을 부탁할 때 에이전트에게 이렇게 알려 주세요:"
+  echo "    \"$APP_DIR/skill/$SKILL_NAME/SKILL.md 를 읽고 그대로 그려줘\""
+  echo "    나중에 스킬을 넣으려면 설치 명령을 다시 실행하세요."
+fi
 echo "완료. 'excali --help'로 확인하세요."

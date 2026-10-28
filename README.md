@@ -55,23 +55,39 @@ https://github.com/gunflake/excalidraw-for-agent 를 설치해줘.
 README의 "에이전트용 설치 절차"를 순서대로 따르고, 끝나면 확인용 그림을 하나 그려서 보여줘.
 ```
 
-설치 중에 에이전트가 스킬도 설치할지 묻습니다. 설치가 끝나면 새 세션에서 "이 흐름 그림으로 그려줘"처럼 말하면 됩니다.
+설치 중에 에이전트가 스킬을 어디에 설치할지 묻습니다. 이 도구는 스킬과 함께 써야 편하니 "모든 프로젝트"(추천)를 고르세요. 설치가 끝나면 새 세션에서 "이 흐름 그림으로 그려줘"처럼 말하면 됩니다.
 
 ### 에이전트용 설치 절차
 
 > 이 절은 설치를 맡은 에이전트를 위한 것입니다. 위에서부터 순서대로 실행하고, 실패한 단계는 원인을 고친 뒤 다시 실행하세요. 이미 설치되어 있어도 그대로 다시 실행하면 최신 배포본으로 바뀝니다.
 
-1. **스킬 설치 여부 묻기.** 사용자에게 아래 문장을 그대로 묻습니다. 에이전트가 실행하면 설치 스크립트가 입력을 받을 수 없어 스스로 묻지 못하므로, 에이전트가 대신 묻습니다.
-   > 스킬도 설치할까요? 스킬을 설치하면 다이어그램이나 플로차트를 요청할 때 에이전트가 이 스킬을 참고해 그립니다.
-2. **설치.** 답에 따라 옵션을 붙여 실행합니다. 예 → `--skill`(Windows는 `-Skill`), 아니오 → `--no-skill`(Windows는 `-NoSkill`).
+1. **스킬 설치 범위 묻기.** 에이전트가 실행하면 설치 스크립트가 입력을 받을 수 없어 스스로 묻지 못하므로, 에이전트가 사용자에게 아래 선택지를 그대로 묻습니다.
+   > excali 스킬을 어디에 설치할까요? 스킬이 있으면 다이어그램을 요청할 때 에이전트가 이 스킬을 참고해 그립니다.
+   > 1) 모든 프로젝트에서 쓰기 (추천)
+   > 2) 특정 프로젝트 폴더에서만 쓰기
+   > 3) 설치하지 않기
+
+   2를 고르면 어느 폴더인지 묻습니다(기본: 지금 작업 중인 폴더). 3을 고르면 바로 따르지 말고 한 번 더 묻습니다.
+   > 스킬이 없으면 에이전트가 excali 쓰는 법을 모릅니다. 그림을 부탁할 때마다 사용법 문서를 읽으라고 직접 알려 줘야 하고, "그림으로 설명해줘"라고만 하면 excali 대신 Mermaid나 글로 답합니다. 그래도 설치하지 않을까요?
+   > 1) 모든 프로젝트에서 쓰기 (추천)
+   > 2) 그래도 설치하지 않기
+2. **설치.** 답에 따라 옵션을 붙여 실행합니다.
+
+   | 답 | macOS / Linux | Windows |
+   |---|---|---|
+   | 모든 프로젝트 | `--skill global` | `-Skill global` |
+   | 특정 프로젝트 | `--skill project --project-dir <폴더>` | `-Skill project -ProjectDir <폴더>` |
+   | 설치하지 않기 | `--no-skill` | `-NoSkill` |
+
+   아래는 모든 프로젝트로 설치하는 예입니다.
 
    macOS / Linux:
    ```bash
-   curl -fsSL https://raw.githubusercontent.com/gunflake/excalidraw-for-agent/main/install.sh | bash -s -- --skill
+   curl -fsSL https://raw.githubusercontent.com/gunflake/excalidraw-for-agent/main/install.sh | bash -s -- --skill global
    ```
    Windows (PowerShell):
    ```powershell
-   irm https://raw.githubusercontent.com/gunflake/excalidraw-for-agent/main/install.ps1 -OutFile "$env:TEMP\excali-install.ps1"; powershell -ExecutionPolicy Bypass -File "$env:TEMP\excali-install.ps1" -Skill
+   irm https://raw.githubusercontent.com/gunflake/excalidraw-for-agent/main/install.ps1 -OutFile "$env:TEMP\excali-install.ps1"; powershell -ExecutionPolicy Bypass -File "$env:TEMP\excali-install.ps1" -Skill global
    ```
    설치 스크립트가 하는 일은 아래 "설치 스크립트가 하는 일"에 있습니다. Chrome이나 Edge가 없으면 PNG용 Chromium(약 100MB)을 받으니, 오래 걸리면 사용자에게 그렇다고 알립니다.
 3. **동작 확인.** 지금 셸에는 PATH 변경이 아직 반영되지 않았으므로 전체 경로로 실행합니다.
@@ -85,11 +101,11 @@ README의 "에이전트용 설치 절차"를 순서대로 따르고, 끝나면 �
    & "$HOME\.excali\bin\excali.cmd" new install-check; & "$HOME\.excali\bin\excali.cmd" build install-check
    ```
    `~/diagrams/install-check.png`가 생기면 그 PNG를 사용자에게 보여 주고, 같은 명령에 `-d ~/diagrams/install-check.excalidraw`(Windows는 `-d "$HOME\diagrams\install-check.excalidraw"`)를 붙여 뷰어를 엽니다.
-4. **보고.** 확인용 PNG 경로를 알려 줍니다. 스킬을 설치했으면 연결된 스킬 경로도 알려 주고, 스킬은 새 세션부터 확실히 잡히니 새 세션에서 그림을 요청하라고 안내합니다. 새 터미널부터는 `excali`만 입력해도 실행된다고 알려 줍니다.
+4. **보고.** 확인용 PNG 경로를 알려 줍니다. 스킬을 설치했으면 설치된 스킬 경로도 알려 주고, 스킬은 새 세션부터 확실히 잡히니 새 세션에서 그림을 요청하라고 안내합니다. 스킬 없이 설치했으면 그림을 부탁할 때 "`~/.excali/app/skill/excalidraw-diagram/SKILL.md`를 읽고 그대로 그려줘"라고 말하면 된다고 알려 줍니다. 새 터미널부터는 `excali`만 입력해도 실행된다고 알려 줍니다.
 
 ### 직접 설치
 
-터미널에 한 줄을 붙여 넣으면 됩니다. 실행하면 "스킬도 설치할까요?"라고 묻습니다.
+터미널에 한 줄을 붙여 넣으면 됩니다. 실행하면 스킬을 어디에 설치할지 묻고, 엔터만 치면 모든 프로젝트용으로 설치합니다.
 
 macOS / Linux (터미널):
 
@@ -103,7 +119,7 @@ Windows (PowerShell):
 irm https://raw.githubusercontent.com/gunflake/excalidraw-for-agent/main/install.ps1 -OutFile "$env:TEMP\excali-install.ps1"; powershell -ExecutionPolicy Bypass -File "$env:TEMP\excali-install.ps1"
 ```
 
-묻지 않게 하려면 macOS / Linux는 끝에 ` -s -- --skill` 또는 ` -s -- --no-skill`을, Windows는 ` -Skill` 또는 ` -NoSkill`을 붙이세요.
+묻지 않게 하려면 위 "에이전트용 설치 절차"의 표에 있는 옵션을 붙이세요. macOS / Linux는 `bash -s -- --skill global`처럼 `-s --` 뒤에 붙입니다.
 
 ### 설치 스크립트가 하는 일
 
@@ -111,10 +127,15 @@ irm https://raw.githubusercontent.com/gunflake/excalidraw-for-agent/main/install
 2. `excali` 명령을 만듭니다.
    - macOS / Linux: `~/.local/bin/excali`. PATH에 없으면 셸 설정(`~/.zshrc` 등)에 한 줄 추가합니다.
    - Windows: `~/.excali/bin/excali.cmd`. 사용자 PATH에 추가합니다.
-3. 스킬 설치를 골랐으면 `~/.claude/skills`, `~/.codex/skills` 중 에이전트 폴더(`~/.claude`, `~/.codex`)가 있는 곳에 `excalidraw-diagram` 스킬을 연결합니다(Windows는 디렉터리 정션).
+3. `excalidraw-diagram` 스킬을 넣습니다. `~/.claude`가 있으면 Claude Code용, `~/.codex`가 있으면 Codex용으로 넣습니다.
+
+   | 범위 | Claude Code | Codex | 방식 |
+   |---|---|---|---|
+   | 모든 프로젝트 | `~/.claude/skills` | `~/.agents/skills` | 링크(Windows는 디렉터리 정션). 업그레이드하면 스킬도 새 버전이 됩니다. |
+   | 특정 프로젝트 | `<폴더>/.claude/skills` | `<폴더>/.agents/skills` | 복사. 저장소에 함께 올려 팀원과 나눌 수 있고, 업그레이드하려면 설치를 다시 실행합니다. |
 4. PNG용 브라우저를 확인합니다. Google Chrome이나 Microsoft Edge가 있으면 그대로 쓰고, 없으면 Chromium 헤드리스 셸(약 100MB)을 받습니다. 나중에 `excali setup-browser`로 다시 할 수도 있습니다.
 
-지우려면 `~/.excali` 폴더, `excali` 명령(macOS / Linux는 `~/.local/bin/excali`), 스킬 링크를 삭제하고, 셸 설정이나 사용자 PATH에 추가된 줄을 지우면 됩니다.
+지우려면 `~/.excali` 폴더, `excali` 명령(macOS / Linux는 `~/.local/bin/excali`), 스킬 폴더(위 표의 위치)를 삭제하고, 셸 설정이나 사용자 PATH에 추가된 줄을 지우면 됩니다.
 
 ### 개발자용: 소스에서 설치
 
