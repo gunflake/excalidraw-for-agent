@@ -59,6 +59,20 @@ irm https://raw.githubusercontent.com/gunflake/excalidraw-for-agent/main/install
 - **그림 보기 화면:** 왼쪽 목록에서 지금까지 연 그림을 고르고, 오른쪽 위에서 글꼴을 바꿀 수 있습니다. 다른 곳에 있는 `.excalidraw` 파일은 화면에 끌어다 놓으면 열립니다.
 - **그림 파일 위치:** 내 홈 폴더의 `diagrams` 폴더에 PNG와 `.excalidraw` 파일로 저장됩니다. `.excalidraw` 파일은 [excalidraw.com](https://excalidraw.com)에 끌어다 놓으면 직접 고칠 수도 있습니다.
 
+## 글꼴을 골라 볼 수 있습니다
+
+그림 보기 화면 오른쪽 위에서 한글이 잘 읽히는 글꼴 네 가지 중 하나를 고를 수 있습니다. 고른 글꼴은 다음에 열 때도 그대로입니다.
+
+| 강원교육모두 Bold (기본) |
+|---|
+| ![강원교육모두 Bold](docs/font-gangwon-bold.png) |
+| **Slant Sans** |
+| ![Slant Sans](docs/font-slant-sans.png) |
+| **Gowun Dodum (고운돋움)** |
+| ![Gowun Dodum](docs/font-gowun-dodum.png) |
+| **나눔손글씨 펜** |
+| ![나눔손글씨 펜](docs/font-nanum-pen.png) |
+
 ## 더 알아보기
 
 아래는 자세한 설명입니다. 필요할 때 펼쳐 보세요.
@@ -168,16 +182,6 @@ irm https://raw.githubusercontent.com/gunflake/excalidraw-for-agent/main/install
 다른 곳에 있는 `.excalidraw` 파일은 뷰어 화면에 끌어다 놓으면 보고 있는 폴더에 저장한 뒤 바로 엽니다. 같은 이름이 있으면 덮어쓰지 않고 `이름-2.excalidraw`처럼 번호를 붙여 저장합니다.
 
 뷰어는 기본으로 강원교육모두 Bold로 글자를 보여 줍니다. 오른쪽 위 메뉴에서 Slant Sans, Gowun Dodum(고운돋움), 나눔손글씨 펜으로 바꿀 수 있습니다. 고른 글꼴과 목록 접힘 상태는 `~/.excali/settings.json`에 저장되어, 뷰어 포트가 달라져도 그대로 유지됩니다. 뷰어 화면에만 적용되고, `.excalidraw` 파일과 `excali png`·`excali build`로 만든 PNG는 손글씨 그대로입니다. PNG에서 한글은 나눔손글씨 펜으로 보입니다. Excalidraw 기본 손글씨 폰트(Excalifont)에 한글 글리프가 없어서, 한글 범위만 나눔손글씨로 바꿔 끼웁니다.
-
-| 강원교육모두 Bold (기본) |
-|---|
-| ![강원교육모두 Bold](docs/font-gangwon-bold.png) |
-| **Slant Sans** |
-| ![Slant Sans](docs/font-slant-sans.png) |
-| **Gowun Dodum (고운돋움)** |
-| ![Gowun Dodum](docs/font-gowun-dodum.png) |
-| **나눔손글씨 펜** |
-| ![나눔손글씨 펜](docs/font-nanum-pen.png) |
 
 뷰어는 보기 전용입니다. 고치고 싶으면 에이전트에게 말하거나, `.excalidraw` 파일을 [excalidraw.com](https://excalidraw.com)에 끌어다 놓고 편집하세요.
 
