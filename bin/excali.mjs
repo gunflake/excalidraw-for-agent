@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { createServer } from "node:http";
-import { execFile, execFileSync, spawn } from "node:child_process";
+import { execFile, execFileSync, spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, watch, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, extname, isAbsolute, join, resolve } from "node:path";
@@ -36,16 +36,25 @@ const RECENT_LIMIT = 20;
 const SETTINGS_PATH = join(homedir(), ".excali", "settings.json");
 const SETTING_KEYS = ["font", "sidebar"];
 const IS_WINDOWS = process.platform === "win32";
+const REPO = "gunflake/excalidraw-for-agent";
+const VERSION = JSON.parse(readFileSync(join(APP_DIR, "package.json"), "utf8")).version;
+const IS_SOURCE_INSTALL = existsSync(join(APP_DIR, "src/app.jsx"));
+const UPDATE_STATE_PATH = join(homedir(), ".excali", "update.json");
+const UPDATE_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
+const RELEASE_API = process.env.EXCALI_RELEASE_API ?? `https://api.github.com/repos/${REPO}/releases/latest`;
+const INSTALL_SCRIPT_BASE = process.env.EXCALI_INSTALL_SCRIPT_BASE ?? `https://raw.githubusercontent.com/${REPO}/main`;
 const USAGE = `사용법:
   excali [-d] [파일.excalidraw | 폴더]     뷰어로 보기 (기본: 현재 폴더, -d는 백그라운드 실행)
   excali png <파일.excalidraw> [출력.png]  뷰어와 같은 폰트로 PNG 만들기
   excali new <이름>                       ~/diagrams/src/<이름>.mjs 그림 스크립트 틀 만들기
   excali build <이름>                     스크립트 실행 → 점검 → ~/diagrams/<이름>.excalidraw, .png 생성
   excali stop                             백그라운드 뷰어 모두 끄기
+  excali update                           새 버전으로 업데이트 (그린 그림·설정·파일 목록은 그대로)
   excali setup-browser                    Chrome·Edge가 없을 때 PNG용 Chromium 받기 (약 100MB)
 
 같은 폴더를 보는 뷰어가 이미 떠 있으면 새로 띄우지 않고, 열린 화면이 그 파일로 넘어갑니다.
-그림 폴더는 EXCALI_HOME 환경 변수로 바꿀 수 있습니다 (기본: ~/diagrams).`;
+그림 폴더는 EXCALI_HOME 환경 변수로 바꿀 수 있습니다 (기본: ~/diagrams).
+하루에 한 번 새 버전을 확인합니다. 끄려면 EXCALI_NO_UPDATE_CHECK=1 을 설정하세요.`;
 
 /** 폴더 안의 .excalidraw 파일 이름을 정렬해 돌려준다. */
 function listScenes(root) {
@@ -538,12 +547,74 @@ async function openViewer(target) {
   openBrowser(url);
 }
 
+/** "0.1.10"처럼 점으로 나눈 버전을 숫자로 비교해 a가 더 새것이면 true. */
+function isNewer(a, b) {
+  const [left, right] = [a, b].map((version) => version.replace(/^v/, "").split(".").map(Number));
+  const index = left.findIndex((part, position) => part !== right[position]);
+  return index !== -1 && left[index] > (right[index] ?? 0);
+}
+
+/** GitHub에서 최신 배포본 버전을 읽는다. */
+async function fetchLatestVersion() {
+  const response = await fetch(RELEASE_API, {
+    headers: { Accept: "application/vnd.github+json", "User-Agent": "excali" },
+    signal: AbortSignal.timeout(2000),
+  });
+  if (!response.ok) throw new Error(`최신 버전 확인 실패: HTTP ${response.status}`);
+  return (await response.json()).tag_name.replace(/^v/, "");
+}
+
+/** 하루에 한 번만 최신 버전을 확인하고, 마지막으로 확인한 최신 버전을 돌려준다. 네트워크가 안 되면 다음 날 다시 확인한다. */
+async function latestVersionDaily() {
+  const state = existsSync(UPDATE_STATE_PATH) ? JSON.parse(readFileSync(UPDATE_STATE_PATH, "utf8")) : {};
+  if (state.checkedAt && Date.now() - state.checkedAt < UPDATE_CHECK_INTERVAL_MS) return state.latest;
+  const latest = await fetchLatestVersion().catch(() => state.latest);
+  writeJsonAtomic(UPDATE_STATE_PATH, { checkedAt: Date.now(), latest });
+  return latest;
+}
+
+/** 새 버전이 있으면 한 줄로 알린다. 에이전트가 이 줄을 보고 사용자에게 업데이트를 물어본다. */
+async function notifyUpdate() {
+  if (IS_SOURCE_INSTALL || process.env.EXCALI_NO_UPDATE_CHECK) return;
+  const latest = await latestVersionDaily();
+  if (!latest || !isNewer(latest, VERSION)) return;
+  console.error(`[excali 업데이트] 새 버전 v${latest}이 나왔습니다 (지금 v${VERSION}). 'excali update'로 업데이트할 수 있고, 그린 그림·설정·파일 목록은 그대로 남습니다.`);
+}
+
+/** 설치 스크립트를 업데이트 모드로 다시 실행한다. 설치 때 고른 스킬 위치를 그대로 쓴다. */
+async function updateApp() {
+  if (IS_SOURCE_INSTALL) {
+    console.error(`소스 폴더(${APP_DIR})에서 설치한 excali입니다. git pull 뒤 ./install.sh 를 다시 실행하세요.`);
+    process.exit(1);
+  }
+  const latest = await fetchLatestVersion();
+  if (!isNewer(latest, VERSION)) {
+    console.log(`이미 최신 버전입니다 (v${VERSION}).`);
+    return;
+  }
+  console.log(`excali: v${VERSION} → v${latest} 업데이트를 시작합니다.`);
+  if (IS_WINDOWS) {
+    const command = `& ([scriptblock]::Create((irm '${INSTALL_SCRIPT_BASE}/install.ps1'))) -Update; Read-Host '엔터를 누르면 창을 닫습니다'`;
+    spawn("cmd", ["/c", "start", "excali update", "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", command], { detached: true, stdio: "ignore" }).unref();
+    console.log("excali: 새 PowerShell 창에서 업데이트를 이어 갑니다. 그 창이 끝나면 다시 사용하세요.");
+    return;
+  }
+  const result = spawnSync("bash", ["-c", `curl -fsSL '${INSTALL_SCRIPT_BASE}/install.sh' | bash -s -- --update`], { stdio: "inherit" });
+  process.exit(result.status ?? 1);
+}
+
 const args = process.argv.slice(2);
 const background = args.includes("-d");
 const [command, ...rest] = args.filter((arg) => arg !== "-d");
 
+if (!["-h", "--help", "stop", "setup-browser", "update"].includes(command)) {
+  await notifyUpdate();
+}
+
 if (command === "-h" || command === "--help") {
   console.log(USAGE);
+} else if (command === "update") {
+  await updateApp();
 } else if (command === "png") {
   if (!rest[0]) {
     console.error(USAGE);

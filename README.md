@@ -44,6 +44,10 @@ Windows:
 irm https://raw.githubusercontent.com/gunflake/excalidraw-for-agent/main/install.ps1 -OutFile "$env:TEMP\excali-install.ps1"; powershell -ExecutionPolicy Bypass -File "$env:TEMP\excali-install.ps1"
 ```
 
+### 업데이트
+
+하루에 한 번 새 버전이 나왔는지 확인합니다. 새 버전이 있으면 그림을 그리던 에이전트가 알려 주고 업데이트할지 묻습니다. 직접 하려면 터미널에서 `excali update`를 실행하세요. 그린 그림, 글꼴 설정, 파일 목록은 그대로 남습니다.
+
 ## 사용법
 
 설치한 뒤 에이전트에서 **새 대화**를 열고 이렇게 말하세요.
@@ -139,9 +143,11 @@ irm https://raw.githubusercontent.com/gunflake/excalidraw-for-agent/main/install
 
    | 범위 | Claude Code | Codex | 방식 |
    |---|---|---|---|
-   | 모든 프로젝트 | `~/.claude/skills` | `~/.agents/skills` | 링크(Windows는 디렉터리 정션). 업그레이드하면 스킬도 새 버전이 됩니다. |
-   | 특정 프로젝트 | `<폴더>/.claude/skills` | `<폴더>/.agents/skills` | 복사. 저장소에 함께 올려 팀원과 나눌 수 있고, 업그레이드하려면 설치를 다시 실행합니다. |
+   | 모든 프로젝트 | `~/.claude/skills` | `~/.agents/skills` | 링크(Windows는 디렉터리 정션). 업데이트하면 스킬도 새 버전이 됩니다. |
+   | 특정 프로젝트 | `<폴더>/.claude/skills` | `<폴더>/.agents/skills` | 복사. 저장소에 함께 올려 팀원과 나눌 수 있습니다. 복사한 위치를 기억해 두었다가 `excali update` 때 함께 새 버전으로 바꿉니다. |
 4. PNG용 브라우저를 확인합니다. Google Chrome이나 Microsoft Edge가 있으면 그대로 쓰고, 없으면 Chromium 헤드리스 셸(약 100MB)을 받습니다. 나중에 `excali setup-browser`로 다시 할 수도 있습니다.
+
+`excali update`는 이 설치 스크립트를 `--update`(Windows는 `-Update`)로 다시 실행합니다. 질문 없이 새 배포본으로 바꾸고, 설치 때 넣은 스킬 위치(`~/.excali/install.json`에 기록)를 모두 새 버전으로 바꿉니다. 그림 폴더(`~/diagrams`)와 설정·파일 목록(`~/.excali/settings.json`, `recent.json`)은 `~/.excali/app` 밖에 있어 건드리지 않습니다. 스킬 파일을 직접 고쳤으면 덮어쓰기 전에 `~/.excali/backups/<날짜-시각>/`에 원래 내용을 보관합니다. 새 버전 확인 결과는 `~/.excali/update.json`에 남고, 확인을 끄려면 `EXCALI_NO_UPDATE_CHECK=1`을 설정합니다.
 
 질문 없이 설치하려면 위 "에이전트용 설치 절차"의 표에 있는 옵션을 붙이세요. macOS / Linux는 `bash -s -- --skill global`처럼 `-s --` 뒤에 붙입니다.
 
@@ -160,6 +166,7 @@ irm https://raw.githubusercontent.com/gunflake/excalidraw-for-agent/main/install
 | `excali new <이름>` | `~/diagrams/src/<이름>.mjs` 그림 스크립트 틀을 만듭니다. |
 | `excali build <이름>` | 스크립트를 실행하고 점검한 뒤 `.excalidraw`, `.png`를 만듭니다. |
 | `excali stop` | 백그라운드 뷰어를 모두 끕니다. |
+| `excali update` | 새 버전으로 업데이트합니다. 그린 그림·설정·파일 목록은 그대로 남습니다. |
 | `excali setup-browser` | Chrome이나 Edge가 없을 때 PNG용 Chromium(약 100MB)을 받습니다. 있으면 아무것도 하지 않습니다. |
 
 같은 폴더를 보는 뷰어가 이미 떠 있으면 새로 띄우지 않고, 열린 화면이 해당 파일로 넘어갑니다. 그림 폴더는 `EXCALI_HOME` 환경 변수로 바꿀 수 있습니다(기본 `~/diagrams`).

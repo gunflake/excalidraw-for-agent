@@ -9,6 +9,8 @@ description: 구조, 흐름, 순서, 관계를 손그림 느낌의 Excalidraw �
 
 `excali`가 PATH에 없으면 `~/.local/bin/excali`(Windows는 `~/.excali/bin/excali.cmd`)를 전체 경로로 쓴다. 그것도 없으면 https://github.com/gunflake/excalidraw-for-agent README의 "에이전트용 설치 절차"로 설치해도 되는지 사용자에게 묻고 멈춘다. Node.js가 없어도 설치된다.
 
+`excali` 출력에 `[excali 업데이트]` 줄이 나오면 하던 그림을 마친 뒤 사용자에게 새 버전이 나왔다고 알리고 업데이트할지 묻는다. 동의하면 `excali update`를 실행한다. 묻지 않고 업데이트하지 않는다. 그린 그림·설정·파일 목록은 그대로 남고, 직접 고친 스킬 파일은 `~/.excali/backups/`에 보관된다고 함께 알려 준다.
+
 ## 작업 순서
 
 1. **무엇을 그릴지 정한다.** 그림 하나에 메시지 하나. 상자는 대략 12개 이하로 둔다. 더 많으면 그림을 나눈다. 아래 "그림 종류 고르기"로 형태를 고른다.
@@ -92,4 +94,5 @@ scene.sequence({
 - `excali png <파일.excalidraw> [출력.png]`: 이미 있는 .excalidraw를 PNG로 만든다.
 - `excali ~/diagrams`: 그림 폴더 전체를 뷰어로 연다. 파일이 2개 이상이면 왼쪽에 목록이 나온다.
 - `excali stop`: 백그라운드 뷰어를 모두 끈다.
+- `excali update`: 새 버전으로 업데이트한다. 사용자가 동의했을 때만 실행한다.
 - 예시 스크립트: 이 스킬이 있는 저장소의 `examples/kafka-rebalance.mjs`(시퀀스), `examples/order-flow.mjs`(흐름도와 group), `examples/web-architecture.mjs`(구조도), `examples/order-state.mjs`(상태 전이도, ellipse), `examples/deploy-pipeline.mjs`(판단이 두 번 있는 파이프라인).

@@ -1,7 +1,8 @@
 ﻿param(
   [ValidateSet("global", "project")][string]$Skill,
   [string]$ProjectDir = (Get-Location).Path,
-  [switch]$NoSkill
+  [switch]$NoSkill,
+  [switch]$Update
 )
 
 $ErrorActionPreference = "Stop"
@@ -12,6 +13,9 @@ $ExcaliHome = Join-Path $HOME ".excali"
 $InstallDir = Join-Path $ExcaliHome "app"
 $BinDir = Join-Path $ExcaliHome "bin"
 $SkillName = "excalidraw-diagram"
+$InstallState = Join-Path $ExcaliHome "install.json"
+$ShippedSkill = Join-Path $ExcaliHome "skill-shipped"
+$BackupRoot = Join-Path $ExcaliHome ("backups\" + (Get-Date -Format "yyyyMMdd-HHmmss"))
 $SourceDir = if ($PSScriptRoot -and (Test-Path (Join-Path $PSScriptRoot "src\app.jsx"))) { $PSScriptRoot } else { $null }
 
 function Invoke-Npm {
@@ -42,7 +46,8 @@ function Install-Release {
     if ($LASTEXITCODE -ne 0) { throw "실행 중인 뷰어를 끄지 못해 설치를 멈춥니다." }
     Write-Host "==> 설치: $InstallDir"
     New-Item -ItemType Directory -Force -Path $ExcaliHome | Out-Null
-    if (Test-Path $InstallDir) { Remove-Item -Recurse -Force $InstallDir }
+    if (Test-Path "$InstallDir.old") { Remove-Item -Recurse -Force "$InstallDir.old" }
+    if (Test-Path $InstallDir) { Move-Item $InstallDir "$InstallDir.old" }
     Move-Item $newApp $InstallDir
   } finally {
     Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue
@@ -88,6 +93,56 @@ function Test-Link($path) {
   return (Get-Item $path -Force).Attributes -band [IO.FileAttributes]::ReparsePoint
 }
 
+function Get-DirSignature($dir) {
+  $root = (Resolve-Path $dir).Path
+  Get-ChildItem -Recurse -File $root | Sort-Object FullName | ForEach-Object {
+    $_.FullName.Substring($root.Length) + " " + (Get-FileHash $_.FullName).Hash
+  }
+}
+
+function Backup-IfEdited($dir, $label, $appDir) {
+  if (-not (Test-Path $dir)) { return }
+  $reference = if (Test-Path $ShippedSkill) { $ShippedSkill } else { Join-Path $appDir "skill\$SkillName" }
+  if (((Get-DirSignature $reference) -join "`n") -eq ((Get-DirSignature $dir) -join "`n")) { return }
+  $dest = Join-Path $BackupRoot $label
+  New-Item -ItemType Directory -Force -Path (Split-Path $dest) | Out-Null
+  Copy-Item -Recurse $dir $dest
+  Write-Host "    직접 고친 스킬이 있어 보관했습니다: $dest"
+}
+
+function Read-InstallState {
+  if (Test-Path $InstallState) { return Get-Content -Raw $InstallState | ConvertFrom-Json }
+  return [pscustomobject]@{ global = $false; projects = @() }
+}
+
+function Save-InstallRecord($scope, $projectDir) {
+  $state = Read-InstallState
+  $projects = @($state.projects)
+  if ($scope -eq "project" -and $projects -notcontains $projectDir) { $projects += $projectDir }
+  $record = [ordered]@{ global = ($state.global -or $scope -eq "global"); projects = $projects }
+  Set-Content -Path $InstallState -Encoding UTF8 -Value (ConvertTo-Json $record)
+}
+
+function Update-Skills($appDir) {
+  $state = Read-InstallState
+  $isGlobal = $state.global
+  if (-not (Test-Path $InstallState)) {
+    $isGlobal = @((Join-Path $HOME ".claude\skills\$SkillName"), (Join-Path $HOME ".agents\skills\$SkillName")) |
+      Where-Object { (Test-Path $_) -and (Test-Link $_) }
+  }
+  if ($isGlobal) {
+    Install-Skill $appDir "global" $null
+    Save-InstallRecord "global" $null
+  }
+  foreach ($dir in @($state.projects | Where-Object { $_ })) {
+    if (-not (Test-Path $dir -PathType Container)) {
+      Write-Host "    프로젝트 폴더가 없어 건너뜁니다: $dir"
+      continue
+    }
+    Install-Skill $appDir "project" $dir
+  }
+}
+
 function Install-Skill($appDir, $scope, $projectDir) {
   $source = Join-Path $appDir "skill\$SkillName"
   if ($scope -eq "global") {
@@ -95,6 +150,7 @@ function Install-Skill($appDir, $scope, $projectDir) {
     $base = $HOME
     $oldLink = Join-Path $HOME ".codex\skills\$SkillName"
     if ((Test-Path $oldLink) -and (Test-Link $oldLink)) { cmd /c rmdir "$oldLink" | Out-Null }
+    Backup-IfEdited "$InstallDir.old\skill\$SkillName" "global" $appDir
   } else {
     Write-Host "==> 에이전트 스킬 복사 (프로젝트: $projectDir)"
     $base = $projectDir
@@ -112,6 +168,7 @@ function Install-Skill($appDir, $scope, $projectDir) {
       if (Test-Path $target) { throw "$target 에 링크가 아닌 폴더가 있습니다. 직접 지운 뒤 다시 실행하세요." }
       New-Item -ItemType Junction -Path $target -Target $source | Out-Null
     } else {
+      Backup-IfEdited $target ("projects\" + ($target -replace '[:\\/]+', '_')) $appDir
       New-Item -ItemType Directory -Force -Path $target | Out-Null
       Copy-Item -Recurse -Force (Join-Path $source "*") $target
     }
@@ -142,7 +199,9 @@ function Read-SkillScope {
 }
 
 if ($Skill -and $NoSkill) { throw "-Skill 과 -NoSkill 은 함께 쓸 수 없습니다." }
-if ($Skill) {
+if ($Update) {
+  $skillScope = "recorded"
+} elseif ($Skill) {
   $skillScope = $Skill
 } elseif ($NoSkill) {
   $skillScope = "none"
@@ -158,7 +217,16 @@ if ($skillScope -eq "project") {
 }
 
 $installed = if ($SourceDir) { Install-Source } else { Install-Release }
-if ($skillScope -ne "none") { Install-Skill $installed.AppDir $skillScope $ProjectDir }
+if ($Update) {
+  Update-Skills $installed.AppDir
+} elseif ($skillScope -ne "none") {
+  Install-Skill $installed.AppDir $skillScope $ProjectDir
+  Save-InstallRecord $skillScope $ProjectDir
+}
+foreach ($stale in @($ShippedSkill, "$InstallDir.old")) {
+  if (Test-Path $stale) { Remove-Item -Recurse -Force $stale }
+}
+Copy-Item -Recurse (Join-Path $installed.AppDir "skill\$SkillName") $ShippedSkill
 
 Write-Host "==> PNG용 브라우저 확인"
 & $installed.Node (Join-Path $installed.AppDir "bin\excali.mjs") setup-browser

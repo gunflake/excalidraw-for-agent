@@ -1,6 +1,6 @@
 {
   "name": "excalidraw-for-agent",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "AI 에이전트가 Excalidraw로 다이어그램을 그리고, 사람은 로컬 뷰어로 확인하는 도구",
   "type": "module",
   "license": "MIT",

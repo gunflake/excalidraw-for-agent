@@ -6,6 +6,10 @@ DOWNLOAD_BASE="${EXCALI_DOWNLOAD_BASE:-https://github.com/$REPO/releases/latest/
 INSTALL_DIR="${EXCALI_INSTALL_DIR:-$HOME/.excali/app}"
 BIN_DIR="${EXCALI_BIN_DIR:-$HOME/.local/bin}"
 SKILL_NAME="excalidraw-diagram"
+EXCALI_DIR="$(dirname "$INSTALL_DIR")"
+INSTALL_STATE="$EXCALI_DIR/install.json"
+SHIPPED_SKILL="$EXCALI_DIR/skill-shipped"
+BACKUP_ROOT="$EXCALI_DIR/backups/$(date +%Y%m%d-%H%M%S)"
 SCRIPT_DIR=""
 if [ -n "${BASH_SOURCE[0]:-}" ] && [ -f "${BASH_SOURCE[0]}" ]; then
   SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -18,6 +22,7 @@ usage() {
   --skill project        한 프로젝트에서만 쓰도록 스킬 복사 (<폴더>/.claude/skills, <폴더>/.agents/skills)
   --project-dir <폴더>   --skill project의 대상 폴더 (기본: 현재 폴더)
   --no-skill             스킬 없이 excali 명령만 설치
+  --update               묻지 않고 새 버전으로 바꾸고, 설치 때 넣은 스킬 위치를 모두 갱신 (excali update가 씀)
 옵션이 없으면 스킬을 어디에 설치할지 묻고, 물을 수 없으면 모든 프로젝트용으로 설치합니다.
 스킬은 ~/.claude가 있으면 Claude Code용, ~/.codex가 있으면 Codex용으로 넣습니다.
 
@@ -28,6 +33,7 @@ EOF
 
 skill_scope=""
 project_dir="$PWD"
+update=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --skill)
@@ -38,6 +44,7 @@ while [ $# -gt 0 ]; do
       ;;
     --project-dir) project_dir="${2:?--project-dir 뒤에 폴더를 적으세요}"; shift ;;
     --no-skill) skill_scope="none" ;;
+    --update) update=1 ;;
     -h | --help) usage; exit 0 ;;
     *) usage; exit 1 ;;
   esac
@@ -72,7 +79,9 @@ confirm_no_skill() {
   esac
 }
 
-if [ -z "$skill_scope" ]; then
+if [ "$update" = 1 ]; then
+  skill_scope="recorded"
+elif [ -z "$skill_scope" ]; then
   if { : </dev/tty; } 2>/dev/null; then
     ask_skill_scope
   else
@@ -120,7 +129,6 @@ install_release() {
   rm -rf "$INSTALL_DIR.old"
   if [ -e "$INSTALL_DIR" ]; then mv "$INSTALL_DIR" "$INSTALL_DIR.old"; fi
   mv "$TMP_DIR/excali" "$INSTALL_DIR"
-  rm -rf "$INSTALL_DIR.old"
 
   APP_DIR="$INSTALL_DIR"
   NODE_BIN="$INSTALL_DIR/runtime/node"
@@ -150,12 +158,61 @@ skill_dirs() {
   if [ -d "$HOME/.codex" ]; then echo "$base/.agents/skills"; fi
 }
 
+backup_if_edited() {
+  local dir="$1" dest="$BACKUP_ROOT/$2" reference="$SHIPPED_SKILL"
+  [ -d "$dir" ] || return 0
+  [ -d "$reference" ] || reference="$APP_DIR/skill/$SKILL_NAME"
+  if diff -rq "$reference" "$dir" >/dev/null 2>&1; then return 0; fi
+  mkdir -p "$(dirname "$dest")"
+  cp -R "$dir" "$dest"
+  echo "    직접 고친 스킬이 있어 보관했습니다: $dest"
+}
+
+record_install() {
+  "$NODE_BIN" -e '
+    const fs = require("node:fs");
+    const [path, scope, dir] = process.argv.slice(1);
+    const state = fs.existsSync(path) ? JSON.parse(fs.readFileSync(path, "utf8")) : { global: false, projects: [] };
+    if (scope === "global") state.global = true;
+    if (scope === "project" && !state.projects.includes(dir)) state.projects.push(dir);
+    fs.writeFileSync(path, JSON.stringify(state, null, 2));
+  ' "$INSTALL_STATE" "$1" "${2:-}"
+}
+
+recorded_scopes() {
+  if [ -f "$INSTALL_STATE" ]; then
+    "$NODE_BIN" -e '
+      const state = JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8"));
+      if (state.global) console.log("global");
+      state.projects.forEach((dir) => console.log(`project ${dir}`));
+    ' "$INSTALL_STATE"
+    return
+  fi
+  if [ -L "$HOME/.claude/skills/$SKILL_NAME" ] || [ -L "$HOME/.agents/skills/$SKILL_NAME" ]; then echo "global"; fi
+}
+
+update_skills() {
+  local scope dir
+  while IFS=' ' read -r scope dir; do
+    [ -n "$scope" ] || continue
+    if [ "$scope" = "project" ] && [ ! -d "$dir" ]; then
+      echo "    프로젝트 폴더가 없어 건너뜁니다: $dir"
+      continue
+    fi
+    skill_scope="$scope"
+    project_dir="${dir:-$PWD}"
+    install_skill
+    record_install "$scope" "$dir"
+  done <<<"$(recorded_scopes)"
+}
+
 install_skill() {
   local source="$APP_DIR/skill/$SKILL_NAME" base dirs dir target
   if [ "$skill_scope" = "global" ]; then
     echo "==> 에이전트 스킬 연결 (모든 프로젝트)"
     base="$HOME"
     if [ -L "$HOME/.codex/skills/$SKILL_NAME" ]; then unlink "$HOME/.codex/skills/$SKILL_NAME"; fi
+    backup_if_edited "$INSTALL_DIR.old/skill/$SKILL_NAME" global
   else
     echo "==> 에이전트 스킬 복사 (프로젝트: $project_dir)"
     base="$project_dir"
@@ -176,6 +233,7 @@ install_skill() {
       ln -sfn "$source" "$target"
     else
       if [ -L "$target" ]; then unlink "$target"; fi
+      backup_if_edited "$target" "projects$target"
       mkdir -p "$target"
       cp -R "$source/." "$target/"
     fi
@@ -207,7 +265,14 @@ echo "==> excali 명령 연결: $BIN_DIR/excali"
 echo "==> 실행 중인 뷰어 끄기 (새 화면과 맞지 않는 예전 서버가 남지 않게)"
 "$NODE_BIN" "$APP_DIR/bin/excali.mjs" stop
 
-if [ "$skill_scope" != "none" ]; then install_skill; fi
+if [ "$update" = 1 ]; then
+  update_skills
+elif [ "$skill_scope" != "none" ]; then
+  install_skill
+  record_install "$skill_scope" "$project_dir"
+fi
+rm -rf "$SHIPPED_SKILL" "$INSTALL_DIR.old"
+cp -R "$APP_DIR/skill/$SKILL_NAME" "$SHIPPED_SKILL"
 
 echo "==> PNG용 브라우저 확인"
 "$NODE_BIN" "$APP_DIR/bin/excali.mjs" setup-browser
